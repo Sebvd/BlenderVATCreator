@@ -9,12 +9,17 @@ bl_info = {
     "doc_url" : ""
 }
 
-modules = []
+from . import UserInterface
+
+modules = [UserInterface]
 
 def register():
     for module in modules:
-        module.register
+        module.register()
 
 def unregister():
     for module in modules:
-        module.unregister
+        module.unregister()
+
+if __name__ == "__main__":
+    register()

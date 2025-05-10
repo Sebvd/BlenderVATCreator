@@ -1,0 +1,50 @@
+from bpy.types import Panel
+from bpy.utils import register_class, unregister_class
+
+class VATEXPORTER_PT_VATSettings(Panel):
+    # Class variables
+    bl_label = "VAT settings"
+    bl_idname = "VATEXPORTER_PT_VATSettings"
+    bl_parent_id = "VATEXPORTER_PT_MainSettings"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+
+    # Draw UI
+    def draw(self, context):
+        scene = context.scene
+        properties = scene.VATExporter_RegularProperties
+        layout = self.layout
+
+        # Split edges checkbox when softbody simulation is checked on
+        if(properties.VATType == "SOFTBODY"):
+            row = layout.prop(properties, "SplitVertices", text = "Split at hard edges")
+
+class VATEXPORTER_PT_ExportSection(Panel):
+    # Class variables
+    bl_label = ""
+    bl_idname = "VATEXPORTER_PT_ExportSection"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "VATTools"
+    bl_parent_id = "VATEXPORTER_PT_MainSettings"
+    bl_options = {"HIDE_HEADER"}
+
+    def draw(self, context):
+        layout = self.layout
+        layout.operator("mesh.primitive_cube_add", text = "Export")
+
+modules = [VATEXPORTER_PT_VATSettings, VATEXPORTER_PT_ExportSection]
+
+# Register class
+def register():
+    for module in modules:
+        register_class(module)
+
+# Unregister class
+def unregister():
+    for module in modules:
+        unregister_class(module)
+
+# Debug register
+if __name__ == "__main__":
+    register()

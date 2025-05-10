@@ -15,7 +15,7 @@ class VATEXPORTER_PT_MainSettings(Panel):
     def draw(self, context):
         # Default variables
         scene = context.scene
-        properties = scene.VATExporter
+        properties = scene.VATExporter_RegularProperties
         layout = self.layout
         split = layout.split()
 
@@ -33,25 +33,7 @@ class VATEXPORTER_PT_MainSettings(Panel):
         column.prop(properties, "FrameSpacing", text = "")
         column.prop(properties, "VATType", text = "")
 
-class VATEXPORTER_PT_VATSettings(Panel):
-    # Class variables
-    bl_label = "VAT settings"
-    bl_idname = "VATEXPORTER_PT_VATSettings"
-    bl_parent_id = "VATEXPORTER_PT_MainSettings"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-
-    # Draw UI
-    def draw(self, context):
-        scene = context.scene
-        properties = scene.VATExporter
-        layout = self.layout
-
-        row = layout.row()
-        row.prop(properties, "LODSettings", text = "")
-
-
-modules = [VATEXPORTER_PT_MainSettings, VATEXPORTER_PT_VATSettings]
+modules = [VATEXPORTER_PT_MainSettings]
 
 # Register class
 def register():
