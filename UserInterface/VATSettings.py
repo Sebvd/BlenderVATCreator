@@ -31,7 +31,18 @@ class VATEXPORTER_PT_ExportSection(Panel):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator("mesh.primitive_cube_add", text = "Export")
+        scene = context.scene
+        properties = scene.VATExporter_RegularProperties
+
+        # A different button for every editor mode
+        if(properties.VATType == "SOFTBODY"): # Softbody
+            layout.operator("vatexporter.rendersoftbody", text = "Export")
+        elif(properties.VATType == "RIGIDBODY"): # Rigidbody
+            layout.operator("mesh.primitive_cube_add", text = "Export")
+        elif(properties.VATType == "FLUID"): # Fluid
+            layout.operator("mesh.primitive_cube_add", text = "Export")
+        else: # Particles
+            layout.operator("mesh.primitive_cube_add", text = "Export")
 
 modules = [VATEXPORTER_PT_VATSettings, VATEXPORTER_PT_ExportSection]
 
