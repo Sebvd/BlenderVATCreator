@@ -25,12 +25,6 @@ def UnsignVector(InputVector):
     InputVector /= 2.0
     InputVector = np.clip(InputVector, 0, 1)
     return InputVector
-
-def UnsignVectors(InputVectors):
-    InputVectors += np.array((1, 1, 1, 0))
-    InputVectors /= np.array((2, 2, 2, 1))
-    InputVectors = np.clip(InputVectors, 0, 1)
-    return InputVectors
 # ------------------------------------------------------------------
 
 # Softbody calculation
@@ -46,7 +40,7 @@ def RenderSoftbodyVAT():
     FrameSpacing = 3
 
     # Prepare selected objects
-    EdgeSplitModifiers, VertexCount, StartVertices, StartMesh = PrepareSelectedObjects(SelectedObjects, 1)
+    EdgeSplitModifiers, VertexCount, StartVertices, CompareMeshes = PrepareSelectedObjects(SelectedObjects, 1)
     FrameCount = ceil((FrameEnd - FrameStart + 1) / FrameSpacing)
     PixelPositions = np.ones((VertexCount * FrameCount, 4))
     PixelNormals = np.ones((VertexCount * FrameCount, 4))
@@ -56,10 +50,12 @@ def RenderSoftbodyVAT():
     for Frame in range(FrameStart, FrameEnd + 1, FrameSpacing):
         LocalArrayPosition = 0
         FrameArrayPosition = floor((Frame - FrameStart) / FrameSpacing) * VertexCount
+        TotalVertexCount = 0
         for SelectedObject in SelectedObjects:
             # Get data from the frame
-            FramePositions, FrameNormals, FrameBounds = GetObjectDataAtFrame(SelectedObject, Frame, StartVertices)
+            FramePositions, FrameNormals, FrameBounds = GetObjectDataAtFrame(SelectedObject, Frame, StartVertices, TotalVertexCount)
             ObjectVertexCount = len(SelectedObject.data.vertices)
+            TotalVertexCount += ObjectVertexCount
 
             # Insert data into array
             InsertLocation = FrameArrayPosition + LocalArrayPosition
@@ -76,10 +72,13 @@ def RenderSoftbodyVAT():
     PixelPositions, Bounds = NormalizePositions(PixelPositions, Bounds)
 
     # Create the export data
-    CreateVATMeshes(SelectedObjects, VertexCount, FrameCount)
+    #CreateVATMeshes(SelectedObjects, VertexCount, FrameCount)
+    CreateTexture(PixelPositions, VertexCount, FrameCount)
     
     # Reset selected objects to their original state
-    bpy.data.meshes.remove(StartMesh)
+    for CompareMesh in CompareMeshes:
+        bpy.data.meshes.remove(CompareMesh)
+
     context.scene.frame_set(StartFrame)
     RemoveEdgeSplit(SelectedObjects, EdgeSplitModifiers)
 
@@ -89,6 +88,7 @@ def PrepareSelectedObjects(Objects : list[bpy.types.Object], EvaluationFrame : i
     VertexCount = 0
     EdgeSplitModifiers = []
     Vertices = []
+    CompareMeshes = []
     for Object in Objects:
         # Assign an edge split modifier is the toggle for sharp edges has been enabled
         EdgeSplitModifier = Object.modifiers.new("EdgeSplit", "EDGE_SPLIT")
@@ -96,15 +96,15 @@ def PrepareSelectedObjects(Objects : list[bpy.types.Object], EvaluationFrame : i
         EdgeSplitModifier.use_edge_sharp = True
         EdgeSplitModifiers.append(EdgeSplitModifier)
 
-        # Calculate the vertexcount across all objects
+        # Calculate vertex data
         CompareMesh = GetObjectAtFrame(Object, EvaluationFrame)
-        
         Vertices += CompareMesh.vertices
         
-        VertexCount += len(Vertices)
+        VertexCount += len(CompareMesh.vertices)
+        CompareMeshes.append(CompareMesh)
 
     # Clean up and return
-    return EdgeSplitModifiers, VertexCount, Vertices, CompareMesh
+    return EdgeSplitModifiers, VertexCount, Vertices, CompareMeshes
 
 # Remove the edge split modifier we just added
 def RemoveEdgeSplit(Objects : list[bpy.types.Object], EdgeSplitModifiers):
@@ -128,7 +128,7 @@ def GetObjectAtFrame(Object : bpy.types.Object, Frame):
     return TemporaryObject
 
 # Get positions (as offsets) and normals from the given object at the given frame for all its vertices
-def GetObjectDataAtFrame(Object : bpy.types.Object, Frame, CompareVertices):
+def GetObjectDataAtFrame(Object : bpy.types.Object, Frame, CompareVertices, TotalVertexCount):
     # Get object data
     CompareMesh = GetObjectAtFrame(Object, Frame)
     Vertices = CompareMesh.vertices
@@ -139,7 +139,7 @@ def GetObjectDataAtFrame(Object : bpy.types.Object, Frame, CompareVertices):
     # Create vertex offsets and normals data
     for Vertex in Vertices:
         # Position calculation
-        Offset = Vertex.co - CompareVertices[Vertex.index].co
+        Offset = Vertex.co - CompareVertices[TotalVertexCount + Vertex.index].co
         ConvertedOffset = (Offset[0], -1 * Offset[1], Offset[2], 1.0)
         Positions[Vertex.index] = ConvertedOffset
 
@@ -161,15 +161,16 @@ def NormalizePositions(Positions, Bounds):
 
     # Move positions into range
     NormalizedPositions = Positions / np.array((MeasureBounds[0], MeasureBounds[1], MeasureBounds[2], 1.0))
-    NormalizedPositions = UnsignVectors(NormalizedPositions)
     NormalizedPositions += np.array((1,1,1,0))
     NormalizedPositions /= np.array((2,2,2,1))
+    NormalizedPositions = np.clip(NormalizedPositions, 0, 1)
 
     return NormalizedPositions, MeasureBounds
 
 # Create VAT mesh andd export it
 def CreateVATMeshes(Objects : list[bpy.types.Object], VertexCount, FrameCount):
     LocalVertexCount = 0
+    bpy.ops.object.select_all(action = "DESELECT")
     for Object in Objects:
         # Create a copy
         NewObject = Object.copy()
@@ -186,7 +187,30 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], VertexCount, FrameCount):
 
         # Link the object to the scene for debug
         bpy.context.collection.objects.link(NewObject)
+        NewObject.select_set(True)
+
+    # Export the meshes
+    ExportFile = "E:\school\personalprojects\\2025\TechArt\BlenderVAT\TestExportFolder\\test.fbx"
+    # bpy.ops.export_scene.fbx(
+    #     filepath = ExportFile,
+    #     use_selection = True
+    # )
     pass
+
+def CreateTexture(Pixels, TextureWidth, TextureHeight):
+    # Create the texture itself
+    Texture = bpy.data.images.new(
+        name = "VATTexture",
+        width = TextureWidth,
+        height = TextureHeight,
+        alpha = True,
+        float_buffer = True
+    )
+    
+    # Set the texture settings
+    Texture.colorspace_settings.is_data = True
+    Texture.colorspace_settings.name = "Non-Color"
+    Texture.pixels = Pixels.ravel()
 
 # Main function to render softbody
 class VATEXPORTER_OT_RenderSoftBody(Operator):
@@ -203,7 +227,6 @@ class VATEXPORTER_OT_RenderSoftBody(Operator):
     
     # run the function
     def execute(self, context):
-        print("Softbody sim")
         RenderSoftbodyVAT()
         return {"FINISHED"}
 
