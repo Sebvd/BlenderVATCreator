@@ -4,6 +4,8 @@ from bpy.utils import register_class, unregister_class
 from math import ceil, floor
 from mathutils import Vector
 import numpy as np
+import os
+import json
 #from .VATFunctions import FilterSelection
 
 # ------------------------------------------------------------------ (To be moved later when building final plugin)
@@ -25,6 +27,15 @@ def UnsignVector(InputVector):
     InputVector /= 2.0
     InputVector = np.clip(InputVector, 0, 1)
     return InputVector
+
+# Calculate mesh extends for correct bounding information in Unreal
+def GetExtends(ExtendsMin, ExtendsMax, StartExtendsMin, StartExtendsMax):
+    ExtraExtendsMin = np.maximum(np.zeros(3), -1 *(ExtendsMin - StartExtendsMin))
+    ExtraExtendsMax = np.maximum(np.zeros(3), ExtendsMax - StartExtendsMax)
+    OutputExtendsMin = np.array([ExtraExtendsMin[0], ExtraExtendsMax[1], ExtraExtendsMin[2]])
+    OutputExtendsMax = np.array([ExtraExtendsMax[0], ExtraExtendsMin[1], ExtraExtendsMax[2]])
+
+    return OutputExtendsMin, OutputExtendsMax
 # ------------------------------------------------------------------
 
 # Softbody calculation
@@ -36,24 +47,29 @@ def RenderSoftbodyVAT():
 
     # Declare main variables
     FrameStart = 1
-    FrameEnd = 10
-    FrameSpacing = 3
+    FrameEnd = 80
+    FrameSpacing = 1
 
     # Prepare selected objects
-    EdgeSplitModifiers, VertexCount, StartVertices, CompareMeshes = PrepareSelectedObjects(SelectedObjects, 1)
+    EdgeSplitModifiers, VertexCount, StartVertices, CompareMeshes, StartExtendsMin, StartExtendsMax = PrepareSelectedObjects(SelectedObjects, 1)
     FrameCount = ceil((FrameEnd - FrameStart + 1) / FrameSpacing)
+    
+    # Initialize export data
     PixelPositions = np.ones((VertexCount * FrameCount, 4))
     PixelNormals = np.ones((VertexCount * FrameCount, 4))
-    Bounds = Vector((0.0, 0.0, 0.0))
+    Bounds = Vector((0.0, 0.0, 0.0)) # Used to normalize the position
+    ExtendsMin = np.zeros(3) # Used to set the correct bounding box information on the mesh in Unreal
+    ExtendsMax = np.zeros(3)
 
     # Start VAT process
     for Frame in range(FrameStart, FrameEnd + 1, FrameSpacing):
         LocalArrayPosition = 0
         FrameArrayPosition = floor((Frame - FrameStart) / FrameSpacing) * VertexCount
         TotalVertexCount = 0
-        for SelectedObject in SelectedObjects:
+        for SelectedObject in SelectedObjects:   
             # Get data from the frame
-            FramePositions, FrameNormals, FrameBounds = GetObjectDataAtFrame(SelectedObject, Frame, StartVertices, TotalVertexCount)
+            FramePositions, FrameNormals, FrameBounds = GetObjectDataAtFrame(
+                SelectedObject, Frame, StartVertices, TotalVertexCount, ExtendsMin, ExtendsMax)
             ObjectVertexCount = len(SelectedObject.data.vertices)
             TotalVertexCount += ObjectVertexCount
 
@@ -70,16 +86,17 @@ def RenderSoftbodyVAT():
             
     # Get the correct position data normalized for pixels and get the bounds
     PixelPositions, Bounds = NormalizePositions(PixelPositions, Bounds)
+    OutputExtendsMin, OutputExtendsMax = GetExtends(ExtendsMin, ExtendsMax, StartExtendsMin, StartExtendsMax)
 
     # Create the export data
-    #CreateVATMeshes(SelectedObjects, VertexCount, FrameCount)
-    CreateTexture(PixelPositions, VertexCount, FrameCount)
+    #CreateVATMeshes(SelectedObjects, VertexCount, FrameCount, StartFrame)
+    #CreateTexture(PixelPositions, VertexCount, FrameCount)
+    CreateJSON(Bounds, OutputExtendsMin, OutputExtendsMax)
     
     # Reset selected objects to their original state
     for CompareMesh in CompareMeshes:
         bpy.data.meshes.remove(CompareMesh)
 
-    context.scene.frame_set(StartFrame)
     RemoveEdgeSplit(SelectedObjects, EdgeSplitModifiers)
 
 # Assign edge split modifier
@@ -89,6 +106,8 @@ def PrepareSelectedObjects(Objects : list[bpy.types.Object], EvaluationFrame : i
     EdgeSplitModifiers = []
     Vertices = []
     CompareMeshes = []
+    StartExtendsMin = np.zeros(3)
+    StartExtendsMax = np.zeros(3)
     for Object in Objects:
         # Assign an edge split modifier is the toggle for sharp edges has been enabled
         EdgeSplitModifier = Object.modifiers.new("EdgeSplit", "EDGE_SPLIT")
@@ -103,8 +122,16 @@ def PrepareSelectedObjects(Objects : list[bpy.types.Object], EvaluationFrame : i
         VertexCount += len(CompareMesh.vertices)
         CompareMeshes.append(CompareMesh)
 
+        # Calculate start extends
+        CompareObject = bpy.data.objects.new(name = "CompareObject", object_data = CompareMesh)
+        BoundBox = CompareObject.bound_box
+        for Vector in BoundBox:
+            np.minimum(StartExtendsMin, Vector, StartExtendsMin)
+            np.maximum(StartExtendsMax, Vector, StartExtendsMax)
+        bpy.data.objects.remove(CompareObject)
+
     # Clean up and return
-    return EdgeSplitModifiers, VertexCount, Vertices, CompareMeshes
+    return EdgeSplitModifiers, VertexCount, Vertices, CompareMeshes, StartExtendsMin, StartExtendsMax
 
 # Remove the edge split modifier we just added
 def RemoveEdgeSplit(Objects : list[bpy.types.Object], EdgeSplitModifiers):
@@ -128,7 +155,7 @@ def GetObjectAtFrame(Object : bpy.types.Object, Frame):
     return TemporaryObject
 
 # Get positions (as offsets) and normals from the given object at the given frame for all its vertices
-def GetObjectDataAtFrame(Object : bpy.types.Object, Frame, CompareVertices, TotalVertexCount):
+def GetObjectDataAtFrame(Object : bpy.types.Object, Frame, CompareVertices, TotalVertexCount, ExtendsMin, ExtendsMax):
     # Get object data
     CompareMesh = GetObjectAtFrame(Object, Frame)
     Vertices = CompareMesh.vertices
@@ -143,8 +170,10 @@ def GetObjectDataAtFrame(Object : bpy.types.Object, Frame, CompareVertices, Tota
         ConvertedOffset = (Offset[0], -1 * Offset[1], Offset[2], 1.0)
         Positions[Vertex.index] = ConvertedOffset
 
-        # Create new bounds
+        # Create new bounds & extents
         CompareBounds(Bounds, ConvertedOffset)
+        np.minimum(Vertex.co[:], ExtendsMin, ExtendsMin)
+        np.maximum(Vertex.co[:], ExtendsMax, ExtendsMax)
 
         # Normal calculation
         VertexNormal = UnsignVector((Vertex.normal.copy()))
@@ -168,15 +197,18 @@ def NormalizePositions(Positions, Bounds):
     return NormalizedPositions, MeasureBounds
 
 # Create VAT mesh andd export it
-def CreateVATMeshes(Objects : list[bpy.types.Object], VertexCount, FrameCount):
+def CreateVATMeshes(Objects : list[bpy.types.Object], VertexCount, FrameCount, StartFrame):
+    bpy.context.scene.frame_set(StartFrame)
     LocalVertexCount = 0
     bpy.ops.object.select_all(action = "DESELECT")
+    NewObjects = []
+    NewDatas = []
     for Object in Objects:
         # Create a copy
         NewObject = Object.copy()
-        NewObject.data = Object.data.copy()
-        LocalVertexCount += len(NewObject.data.vertices)
-
+        NewData = Object.data.copy()
+        NewObject.data = NewData
+        
         # UV data
         DistanceToTop = 1.0 / FrameCount * 0.5 # Make sure that the UV is exactly in the middle of the pixel in the v axis
 
@@ -189,14 +221,23 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], VertexCount, FrameCount):
         bpy.context.collection.objects.link(NewObject)
         NewObject.select_set(True)
 
+        NewObjects.append(NewObject)
+        NewDatas.append(NewData)
+
+        LocalVertexCount += len(NewObject.data.vertices)
+
     # Export the meshes
     ExportFile = "E:\school\personalprojects\\2025\TechArt\BlenderVAT\TestExportFolder\\test.fbx"
-    # bpy.ops.export_scene.fbx(
-    #     filepath = ExportFile,
-    #     use_selection = True
-    # )
-    pass
+    bpy.ops.export_scene.fbx(
+        filepath = ExportFile,
+        use_selection = True
+    )
+    # Clean up
+    for i, NewObject in enumerate(NewObjects):
+        bpy.data.objects.remove(NewObject)
+        bpy.data.meshes.remove(NewDatas[i])
 
+# Creates a texture with the given pixels
 def CreateTexture(Pixels, TextureWidth, TextureHeight):
     # Create the texture itself
     Texture = bpy.data.images.new(
@@ -211,6 +252,20 @@ def CreateTexture(Pixels, TextureWidth, TextureHeight):
     Texture.colorspace_settings.is_data = True
     Texture.colorspace_settings.name = "Non-Color"
     Texture.pixels = Pixels.ravel()
+
+# Creates the JSON file containing the VAT data
+def CreateJSON(Bounds, ExtendsMin, ExtendsMax):
+    # Create JSON dict
+    SimulationData = dict()
+    SimulationData["FPS"] = bpy.context.scene.render.fps
+    SimulationData["Bounds"] = Bounds
+    SimulationData["ExtendsMin"] = ExtendsMin.tolist()
+    SimulationData["ExtendsMax"] = ExtendsMax.tolist()
+
+    # Export the JSPON
+    ExportFile = "E:\school\personalprojects\\2025\TechArt\BlenderVAT\TestExportFolder\\data.json"
+    with open(ExportFile, "w") as File:
+        json.dump(SimulationData, File, indent = 2)
 
 # Main function to render softbody
 class VATEXPORTER_OT_RenderSoftBody(Operator):
