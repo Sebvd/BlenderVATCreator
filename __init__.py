@@ -1,3 +1,7 @@
+# For debugging purposes
+import sys
+
+
 bl_info = {
     "name" : "VAT exporter",
     "author": "Seb van den Beemt",
@@ -9,12 +13,14 @@ bl_info = {
     "doc_url" : ""
 }
 
-from . import UserInterface
+import UserInterface, Operators
+from importlib import reload
 
-modules = [UserInterface]
+modules = [UserInterface, Operators]
 
 def register():
     for module in modules:
+        reload(module)
         module.register()
 
 def unregister():
@@ -22,4 +28,6 @@ def unregister():
         module.unregister()
 
 if __name__ == "__main__":
+    print("executing")
+    unregister() # For now a debug
     register()

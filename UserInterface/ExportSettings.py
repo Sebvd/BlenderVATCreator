@@ -18,26 +18,68 @@ class VATEXPORTER_PT_ExportSettings(Panel):
         properties = scene.VATExporter_RegularProperties
 
         # Drawing the export settings text labels
-        split = layout.split()
-        column = split.column()
-        column.label(text = "Output directory")
-        column.label(text = "Output mesh name")
-        column.label(text = "Data file name")
-        column.label(text = "Position texture name")
-        column.label(text = "Rotation texture name")
-        if(properties.VATType == "FLUID"):
-            column.label(text = "Lookup texture name")
+        row = layout.row()
+        row.label(text = "Output directory")
+        row.prop(properties, "OutputDirectory", text = "")
 
-        # Drawing the export settings text fields
-        column = split.column()
-        column.prop(properties, "OutputDirectory", text = "")
-        column.prop(properties, "FileMeshName", text = "")
-        column.prop(properties, "FileJSONData", text = "")
-        column.prop(properties, "FilePositionTexture", text = "")
-        column.prop(properties, "FileRotationTexture", text = "")
-        if(properties.VATType == "FLUID"):
-            column.prop(properties, "FileLookUpTexture", text = "")
+        # Section on the mesh name
+        box = layout.box()
+        row = box.row()
+        row.prop(properties, "FileMeshEnabled", text = "VAT mesh")
+        row = box.row()
+        if(not properties.FileMeshEnabled):
+            row.enabled = False
+        row.label(text = "Output mesh name")
+        row.prop(properties, "FileMeshName", text = "")
 
+        # Section on the JSON data
+        box = layout.box()
+        row = box.row()
+        row.prop(properties, "FileJSONDataEnabled", text = "Simulation data JSON file")
+        row = box.row()
+        if(not properties.FileJSONDataEnabled):
+            row.enabled = False
+        row.label(text = "Data file name")
+        row.prop(properties, "FileJSONData", text = "")
+
+        # Section on the position texture
+        box = layout.box()
+        row = box.row()
+        row.prop(properties, "FilePositionTextureEnabled", text = "File position texture")
+        row1 = box.row()
+        row2 = box.row()
+        if(not properties.FilePositionTextureEnabled):
+            row1.enabled = False
+            row2.enabled = False
+        row1.label(text = "Position texture name")
+        row1.prop(properties, "FilePositionTexture", text = "")
+        row2.label(text = "Format")
+        row2.prop(properties, "FilePositionTextureFormat", text = "")
+
+        # Section on the rotation texture
+        box = layout.box()
+        row = box.row()
+        row.prop(properties, "FileRotationTextureEnabled", text = "File rotation texture")
+        row1 = box.row()
+        row2 = box.row()
+        if(not properties.FileRotationTextureEnabled):
+            row1.enabled = False
+            row2.enabled = False
+        row1.label(text = "Rotation texture name")
+        row1.prop(properties, "FileRotationTexture", text = "")
+        row2.label(text = "Format")
+        row2.prop(properties, "FileRotationTextureFormat", text = "")
+
+        # Section for the lookup texture
+        if(properties.VATType == "FLUID"):
+            box = layout.box()
+            row = box.row()
+            row.prop(properties, "FileLookUpTextureEnabled", text = "File lookup texture")
+            row = box.row()
+            if(not properties.FileLookUpTextureEnabled):
+                row.enabled = False
+            row.label(text = "Lookup texture name")
+            row.prop(properties, "FileLookUpTexture", text = "")
 
 modules = [VATEXPORTER_PT_ExportSettings]
 

@@ -82,6 +82,63 @@ class VATEXPORTER_PG_Properties(PropertyGroup):
         subtype = "FILE_NAME"
     )
 
+    # Checkbox whether to export the position texture
+    FilePositionTextureEnabled : BoolProperty(
+        name = "File position texture enabled",
+        description = "Whether to export a position texture",
+        default = True
+    )
+
+    # Checkbox whether to export the normal texture
+    FileRotationTextureEnabled : BoolProperty(
+        name = "File rotation texture enabled",
+        description = "Whether to export a rotation texture",
+        default = True
+    )
+
+    # Checkbox whether to export the lookup texture
+    FileLookUpTextureEnabled : BoolProperty(
+        name = "Lookup texture enabled",
+        description = "Whether to export the lookup texture",
+        default = True
+    )
+
+    # Checkbox whether to export the file mesh
+    FileMeshEnabled : BoolProperty(
+        name = "File mesh enabled",
+        description = "Whether to export a VAT mesh",
+        default = True
+    )
+
+    # Checkbox whether to export the JSON data
+    FileJSONDataEnabled : BoolProperty(
+        name = "JSON data enabled",
+        description = "Whether to export a separate JSON file that contains information on the VAT animation",
+        default = True
+    )
+
+    # Export settings for the position texture
+    FilePositionTextureFormat : EnumProperty(
+        name = "File position texture format",
+        description = "The format of the position texture",
+        items = [
+            ("8", "8 bit float", ""),
+            ("16", "16 bit float", "")
+        ],
+        default = "16"
+    )
+
+    # Export settings for the rotation texture
+    FileRotationTextureFormat : EnumProperty(
+        name = "File rotation texture format",
+        description = "The format of the rotation texture",
+        items = [
+            ("8", "8 bit float", ""),
+            ("16", "16 bit float", "")
+        ],
+        default = "8"
+    )
+
 # Register class
 def register():
     register_class(VATEXPORTER_PG_Properties)
