@@ -15,9 +15,28 @@ class VATEXPORTER_PT_VATSettings(Panel):
         properties = scene.VATExporter_RegularProperties
         layout = self.layout
 
+        # Create sliders for maximum texture sizes
+        row = layout.row()
+        split = row.split(factor = 0.4)
+        column = split.column()
+        column.label(text = "Target Coords")
+        column.label(text = "Flip Coords")
+        column.label(text = "Max U")
+        column.label(text = "Max V")
+
+        column = split.column()
+        column.prop(properties, "CoordinateSystem", text = "")
+        row = column.row()
+        row.prop(properties, "FlipX", text = "X")
+        row.prop(properties, "FlipY", text = "Y")
+        row.prop(properties, "FlipZ", text = "Z")
+        column.prop(properties, "ExportResolutionU", text = "")
+        column.prop(properties, "ExportResolutionV", text = "")
+
         # Split edges checkbox when softbody simulation is checked on
         if(properties.VATType == "SOFTBODY"):
-            row = layout.prop(properties, "SplitVertices", text = "Split at hard edges")
+            row = layout.row()
+            row.prop(properties, "SplitVertices", text = "Split at hard edges")
 
 class VATEXPORTER_PT_ExportSection(Panel):
     # Class variables

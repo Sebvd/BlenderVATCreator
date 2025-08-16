@@ -108,7 +108,10 @@ def ExportWithLODs(Objects : list[bpy.types.Object]):
         # Perform the export
         bpy.ops.export_scene.fbx(
             filepath = ExportFile,
-            use_selection = True
+            use_selection = True,
+            bake_space_transform = True,
+            bake_anim = False
         )
 
     return
+

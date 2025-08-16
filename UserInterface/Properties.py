@@ -139,6 +139,54 @@ class VATEXPORTER_PG_Properties(PropertyGroup):
         default = "8"
     )
 
+    # Maximum export resolutions
+    ExportResolutionU : IntProperty(
+        name = "Max size U",
+        description = "The maximum size of the produced texture(s) alongside the U coordinate",
+        min = 1,
+        soft_min = 1,
+        soft_max = 4096,
+        default = 4096 
+    )
+    ExportResolutionV : IntProperty(
+        name = "Max size V",
+        description = "The maximum size of the produced texture(s) alongside the V coordinate",
+        min = 1,
+        soft_min = 1,
+        soft_max = 4096,
+        default = 4096 
+    )
+
+    # Settings for export coordinate system
+    CoordinateSystem : EnumProperty(
+        name = "Coordinate system",
+        description  = "The coordinate system to export to",
+        items = [
+            ("xyz", "xyz", ""),
+            ("xzy", "xzy", ""),
+            ("yxz", "yxz", ""),
+            ("yzx", "yzx", ""),
+            ("zxy", "zxy", ""),
+            ("zyx", "zyx", "")
+        ]
+    )
+    FlipX : BoolProperty(
+        name = "Flip X",
+        description = "Flip the (Blender) X coordinate",
+        default = False
+    )
+    FlipY : BoolProperty(
+        name = "Flip Y",
+        description = "Flip the (Blender) Y coordinate",
+        default = True
+    )
+    FlipZ : BoolProperty(
+        name = "Flip Z",
+        description = "Flip the (Blender) Z coordinate",
+        default = False
+    )
+    
+
 # Register class
 def register():
     register_class(VATEXPORTER_PG_Properties)

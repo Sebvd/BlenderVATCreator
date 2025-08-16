@@ -50,78 +50,113 @@ def IsExportValid():
     if(FileRotationTexture == "" and FileRotationTextureEnabled):
         Warning = "Incorrect rotation texture name"
         return False, Warning
+    # check if we can export based on the modifiers on the selection
 
     return True, ""
 
 # Softbody calculation
 def RenderSoftbodyVAT():
-    # Main data & start data
+    # Main starting data
     StartSelection = bpy.context.selected_objects
     SelectedObjects = FilterSelection(StartSelection)
     context = bpy.context
-    StartFrame = context.scene.frame_current
     properties = context.scene.VATExporter_RegularProperties
+    bCaughtVATError = False
 
-    # Declare main variables
-    FrameStart = 1
-    FrameEnd = 80
-    FrameSpacing = 1
+    FrameStart = context.scene.frame_start
+    FrameEnd = context.scene.frame_end
+    FrameSpacing = properties.FrameSpacing
 
     # Prepare selected objects
-    EdgeSplitModifiers, VertexCount, StartVertices, CompareMeshes, StartExtendsMin, StartExtendsMax = PrepareSelectedObjects(SelectedObjects, 1)
-    FrameCount = ceil((FrameEnd - FrameStart + 1) / FrameSpacing)
+    EdgeSplitModifiers, VertexCount, StartVertices, CompareMeshes, StartExtendsMin, StartExtendsMax = PrepareSelectedObjects(SelectedObjects, FrameStart)
+    FrameCount = min(ceil((FrameEnd - FrameStart + 1) / FrameSpacing), properties.ExportResolutionV)
+    VertexCount = min(VertexCount, properties.ExportResolutionU)
     
     # Initialize export data
-    PixelPositions = np.ones((VertexCount * FrameCount, 4))
-    PixelNormals = np.ones((VertexCount * FrameCount, 4))
-    Bounds = Vector((0.0, 0.0, 0.0)) # Used to normalize the position
-    ExtendsMin = np.array([np.inf] * 3) # Used to set the correct bounding box information on the mesh in Unreal
+    TextureArraySize = VertexCount * FrameCount
+    PixelPositions = np.ones((TextureArraySize, 4))
+    PixelNormals = np.ones((TextureArraySize, 4))
+    Bounds = Vector((0.0, 0.0, 0.0))
+    ExtendsMin = np.array([np.inf] * 3)
     ExtendsMax = np.array([np.inf * -1] * 3)
 
     # Start VAT process
-    for Frame in range(FrameStart, FrameEnd + 1, FrameSpacing):
-        LocalArrayPosition = 0
-        FrameArrayPosition = floor((Frame - FrameStart) / FrameSpacing) * VertexCount
-        TotalVertexCount = 0
+    PrevFrameVertexCount = 0
+    for Frame in range(FrameStart, FrameEnd + 1):
+        # Check if we should write data for this specific frame (if we don't it might break non-cached simulations)
+        if((Frame - FrameStart) % FrameSpacing != 0):
+            bpy.context.scene.frame_set(Frame)
+            continue
+
+        # Check if we are exceeding the maximum number of frames
+        VerticalPixelIndex = floor((Frame - FrameStart) / FrameSpacing)
+        if(VerticalPixelIndex >= FrameCount):
+            break
+
+        # Start writing to frame
+        FrameArrayPosition = VerticalPixelIndex * VertexCount
+        FrameVertexCount = 0
         for SelectedObject in SelectedObjects:   
             # Get data from the frame
-            FramePositions, FrameNormals, FrameBounds = GetObjectDataAtFrame(
-                SelectedObject, Frame, StartVertices, TotalVertexCount, ExtendsMin, ExtendsMax)
+            FramePositions, FrameNormals, FrameBounds, bCaughtVATError = GetObjectDataAtFrame(
+                SelectedObject, Frame, StartVertices, FrameVertexCount, ExtendsMin, ExtendsMax)
             ObjectVertexCount = len(FramePositions)
-            TotalVertexCount += ObjectVertexCount
 
             # Insert data into array
-            InsertLocation = FrameArrayPosition + LocalArrayPosition
-            PixelPositions[InsertLocation:(InsertLocation + ObjectVertexCount), :] = FramePositions
-            PixelNormals[InsertLocation:(InsertLocation + ObjectVertexCount), :] = FrameNormals
+            RestSpace = min(ObjectVertexCount, max(0, VertexCount - FrameVertexCount))
+            FramePositions = np.resize(FramePositions, (RestSpace, 4))
+            FrameNormals = np.resize(FrameNormals, (RestSpace, 4))
+            InsertLocationStart = FrameArrayPosition + FrameVertexCount
+            InsertLocationEnd = InsertLocationStart + RestSpace
+            PixelPositions[InsertLocationStart:InsertLocationEnd, :] = FramePositions
+            PixelNormals[InsertLocationStart:InsertLocationEnd, :] = FrameNormals
 
             # Update bounds
             CompareBounds(Bounds, FrameBounds)
 
             # Update local array position
-            LocalArrayPosition += ObjectVertexCount
-            
+            FrameVertexCount += ObjectVertexCount
+            if(FrameVertexCount > VertexCount):
+                break
+        
+        # Check if the vertex count decreases this frame
+        if(Frame != FrameStart and FrameVertexCount != PrevFrameVertexCount):
+            bCaughtVATError = True
+        PrevFrameVertexCount = FrameVertexCount
+
+        # Loop out of the frame loop if we encounter an error with the VAT objects
+        if(bCaughtVATError):
+            break
+
+    # Error out if the loop encountered irregular polycounts
+    if(bCaughtVATError):
+        RemoveEdgeSplit(SelectedObjects, EdgeSplitModifiers)
+        return True, "The polycount is changing per frame, which is not allowed with VATs. Check your modifiers."
+
     # Get the correct position data normalized for pixels and get the bounds
     PixelPositions, Bounds = NormalizePositions(PixelPositions, Bounds)
     OutputExtendsMin, OutputExtendsMax = GetExtends(ExtendsMin, ExtendsMax, StartExtendsMin, StartExtendsMax)
 
     # Create the export data
-    CreateVATMeshes(SelectedObjects, VertexCount, FrameCount, StartFrame)
+    CreateVATMeshes(SelectedObjects, VertexCount, FrameCount, FrameStart)
     if(properties.FilePositionTextureEnabled):
         CreateTexture(PixelPositions, VertexCount, FrameCount, properties.FilePositionTexture, properties.FilePositionTextureFormat)
     if(properties.FileRotationTextureEnabled):
         CreateTexture(PixelNormals, VertexCount, FrameCount, properties.FileRotationTexture, properties.FileRotationTextureFormat)
     if(properties.FileJSONDataEnabled):
-        CreateJSON(Bounds, OutputExtendsMin, OutputExtendsMax, properties)
+        CreateJSON(Bounds, OutputExtendsMin, OutputExtendsMax, properties, VertexCount)
 
     # Reset selected objects to their original state
     for CompareMesh in CompareMeshes:
         bpy.data.meshes.remove(CompareMesh)
 
     RemoveEdgeSplit(SelectedObjects, EdgeSplitModifiers)
-    bpy.context.scene.frame_set(StartFrame)
+    bpy.context.scene.frame_set(FrameStart)
     for Object in StartSelection:
         Object.select_set(True)
+
+    # Return
+    return False, ""
 
 # Assign edge split modifier
 def PrepareSelectedObjects(Objects : list[bpy.types.Object], EvaluationFrame : int):
@@ -185,6 +220,10 @@ def GetObjectDataAtFrame(Object : bpy.types.Object, Frame, CompareVertices, Tota
     Normals = np.ones((len(Vertices), 4))
     Bounds = Vector((0.0, 0.0, 0.0))
 
+    # Check if the polycount increases this frame
+    if(TotalVertexCount + len(Vertices) > len(CompareVertices)):
+        return Positions, Normals, Bounds, True
+
     # Create vertex offsets and normals data
     for Vertex in Vertices:
         # Position calculation
@@ -204,7 +243,7 @@ def GetObjectDataAtFrame(Object : bpy.types.Object, Frame, CompareVertices, Tota
         Normals[Vertex.index] = (ConvertedNormal[0], ConvertedNormal[1], ConvertedNormal[2], 1.0)
 
     bpy.data.meshes.remove(CompareMesh)
-    return Positions, Normals, Bounds
+    return Positions, Normals, Bounds, False
 
 # Bring positions to a range from 0-1 based on the maximum calculated bounds
 def NormalizePositions(Positions, Bounds):
@@ -231,16 +270,29 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], VertexCount, FrameCount, S
         # Create a copy
         NewObject = Object.copy()
         NewData = GetObjectAtFrame(Object, StartFrame)
-        #NewData = Object.data.copy()
         NewObject.data = NewData
+
+        # Apply the modifiers for each object (e.g., subsurf modifer can cause UV issues)
+        Modifiers = NewObject.modifiers
+        bpy.context.collection.objects.link(NewObject)
+        for Modifier in Modifiers:
+            bpy.context.view_layer.objects.active = NewObject
+            bpy.ops.object.modifier_apply(modifier = Modifier.name)
+        bpy.context.collection.objects.unlink(NewObject)
         
         # UV data
         DistanceToTop = 1.0 / FrameCount * 0.5 # Make sure that the UV is exactly in the middle of the pixel in the v axis
 
         # Setting the UVs
         PixelUVLayer = NewObject.data.uv_layers.new(name = "PixelUVs")
+        print("Vtx count: ")
+        print(VertexCount)
         for Loop in NewObject.data.loops:
-            PixelUVLayer.data[Loop.index].uv = ((Loop.vertex_index + LocalVertexCount + 0.5) / VertexCount, 1.0 - DistanceToTop)
+            print(Loop.vertex_index + LocalVertexCount)
+            PixelUVLayer.data[Loop.index].uv = (
+                (Loop.vertex_index + LocalVertexCount + 0.5) / VertexCount, 
+                1.0 - DistanceToTop
+            )
 
         # Link the object to the scene
         bpy.context.collection.objects.link(NewObject)
@@ -251,23 +303,24 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], VertexCount, FrameCount, S
 
         LocalVertexCount += len(NewObject.data.vertices)
 
-
     # Export the meshes
     ExportWithLODs(NewObjects)
 
     # Clean up
     for i, NewObject in enumerate(NewObjects):
+        
         bpy.data.objects.remove(NewObject)
         bpy.data.meshes.remove(NewDatas[i])
 
 # Creates the JSON file containing the VAT data
-def CreateJSON(Bounds, ExtendsMin, ExtendsMax, properties):
+def CreateJSON(Bounds, ExtendsMin, ExtendsMax, properties, VertexCount):
     # Create JSON dict
     SimulationData = dict()
     SimulationData["FPS"] = bpy.context.scene.render.fps
     SimulationData["Bounds"] = Bounds
     SimulationData["ExtendsMin"] = ExtendsMin.tolist()
     SimulationData["ExtendsMax"] = ExtendsMax.tolist()
+    SimulationData["VertexCount"] = VertexCount
 
     # Export the JSPON
     TargetDirectory = bpy.path.abspath(properties.OutputDirectory)
@@ -308,7 +361,11 @@ class VATEXPORTER_OT_RenderSoftBody(Operator):
             self.report({"WARNING"}, "Nothing is selected")
             return {"CANCELLED"}
 
-        RenderSoftbodyVAT()
+        bVATError, VATErrorDescription = RenderSoftbodyVAT()
+        if(bVATError):
+            self.report({"ERROR"}, VATErrorDescription)
+            return {"CANCELLED"}
+        
         return {"FINISHED"}
 
 modules = [VATEXPORTER_OT_RenderSoftBody]

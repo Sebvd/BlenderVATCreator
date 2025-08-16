@@ -1,6 +1,6 @@
 # For debugging purposes
 import sys
-
+sys.path.append("e:\school\personalprojects\\2025\TechArt\BlenderVATRoot\BlenderVATExporter")
 
 bl_info = {
     "name" : "VAT exporter",
