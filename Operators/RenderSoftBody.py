@@ -12,7 +12,8 @@ from .VATFunctions import (
     CompareBounds, 
     UnsignVector, 
     ExportWithLODs, 
-    GetExtends
+    GetExtends,
+    ConvertCoordinate
 )
 
 # Check if the export data is valid
@@ -228,8 +229,8 @@ def GetObjectDataAtFrame(Object : bpy.types.Object, Frame, CompareVertices, Tota
     for Vertex in Vertices:
         # Position calculation
         CompareVertex = CompareVertices[TotalVertexCount + Vertex.index].co
-        Offset = Vertex.co - CompareVertex
-        ConvertedOffset = (Offset[0], -1 * Offset[1], Offset[2], 1.0)
+        Offset = ConvertCoordinate(Vertex.co - CompareVertex)
+        ConvertedOffset = (Offset[0], Offset[1], Offset[2], 1.0)
         Positions[Vertex.index] = ConvertedOffset
 
         # Create new bounds & extents
@@ -238,8 +239,8 @@ def GetObjectDataAtFrame(Object : bpy.types.Object, Frame, CompareVertices, Tota
         np.maximum(Vertex.co[:], ExtendsMax, ExtendsMax)
 
         # Normal calculation
-        VertexNormal = Vertex.normal.copy()
-        ConvertedNormal = UnsignVector(Vector((VertexNormal[0], -1 * VertexNormal[1], VertexNormal[2])))
+        VertexNormal = ConvertCoordinate(Vertex.normal.copy())
+        ConvertedNormal = UnsignVector(Vector((VertexNormal[0], VertexNormal[1], VertexNormal[2])))
         Normals[Vertex.index] = (ConvertedNormal[0], ConvertedNormal[1], ConvertedNormal[2], 1.0)
 
     bpy.data.meshes.remove(CompareMesh)
@@ -279,18 +280,15 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], VertexCount, FrameCount, S
             bpy.context.view_layer.objects.active = NewObject
             bpy.ops.object.modifier_apply(modifier = Modifier.name)
         bpy.context.collection.objects.unlink(NewObject)
-        
+
         # UV data
         DistanceToTop = 1.0 / FrameCount * 0.5 # Make sure that the UV is exactly in the middle of the pixel in the v axis
 
         # Setting the UVs
         PixelUVLayer = NewObject.data.uv_layers.new(name = "PixelUVs")
-        print("Vtx count: ")
-        print(VertexCount)
         for Loop in NewObject.data.loops:
-            print(Loop.vertex_index + LocalVertexCount)
             PixelUVLayer.data[Loop.index].uv = (
-                (Loop.vertex_index + LocalVertexCount + 0.5) / VertexCount, 
+                min((Loop.vertex_index + LocalVertexCount + 0.5), VertexCount - 0.5) / VertexCount, 
                 1.0 - DistanceToTop
             )
 
