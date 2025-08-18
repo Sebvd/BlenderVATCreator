@@ -5,7 +5,7 @@ from bpy.utils import register_class, unregister_class
 
 # Main property group
 class VATEXPORTER_PG_Properties(PropertyGroup):
-    # Frame spacing, the frequency of frames to evaluate
+    # General export settings
     FrameSpacing : IntProperty(
         name = "Frame Spacing",
         description = "Instead of evaluating the VAT each frame, the VATs get evaluated every x amount of frames",
@@ -14,8 +14,6 @@ class VATEXPORTER_PG_Properties(PropertyGroup):
         soft_max = 10,
         default = 1
     )
-
-    # VAT type (Softbody, rigidbody, fluid, particles)
     VATType : EnumProperty(
         name = "",
         description = "The type of VAT to choose",
@@ -27,116 +25,15 @@ class VATEXPORTER_PG_Properties(PropertyGroup):
         ],
         default = "SOFTBODY"
     )
-
-    # For softbody sims: Whether or not split the vertices at your hard edges to preserve their normals
     SplitVertices : BoolProperty(
         name = "Split Vertices",
         description = "Split vertices at the hard edges to preserve their normals. This results in overlapping vertices, but allows you to preserve hard edges.",
         default = True
     )
-
-    # Target directory of the generated files
     OutputDirectory : StringProperty(
         name = "Output directory",
         description = "The target directory to store the meshes in",
         subtype = "DIR_PATH"
-    )
-    
-    # Target name of the generated VAT mesh
-    FileMeshName : StringProperty(
-        name = "File mesh name",
-        description = "The target file name of the generated mesh file",
-        default = "SM_VATMesh",
-        subtype = "FILE_NAME"
-    )
-
-    # Target name of the generated VAT position texture
-    FilePositionTexture : StringProperty(
-        name = "File position texture name",
-        description = "The target file name of the position texture",
-        default = "T_Simulation_VATP",
-        subtype = "FILE_NAME"
-    )
-
-    # Target name of the generated VAT rotation texture
-    FileRotationTexture : StringProperty(
-        name = "File rotation texture name",
-        description = "The target file name of the rotation texture",
-        default = "T_Simulation_VATN",
-        subtype = "FILE_NAME"
-    )
-
-    # Target name of the generated VAT lookup texture - only intended for fluid animations
-    FileLookUpTexture : StringProperty(
-        name = "File lookup texture name",
-        description = "The target file name for the lookup texture",
-        default = "T_Simulation_VATL",
-        subtype = "FILE_NAME"
-    )
-
-    # Target name of the generated JSON information file
-    FileJSONData : StringProperty(
-        name = "JSON data file name",
-        description = "The target file name for the JSON file that contains additional simulation data that is required in the target engine",
-        default = "Simulation_DATA",
-        subtype = "FILE_NAME"
-    )
-
-    # Checkbox whether to export the position texture
-    FilePositionTextureEnabled : BoolProperty(
-        name = "File position texture enabled",
-        description = "Whether to export a position texture",
-        default = True
-    )
-
-    # Checkbox whether to export the normal texture
-    FileRotationTextureEnabled : BoolProperty(
-        name = "File rotation texture enabled",
-        description = "Whether to export a rotation texture",
-        default = True
-    )
-
-    # Checkbox whether to export the lookup texture
-    FileLookUpTextureEnabled : BoolProperty(
-        name = "Lookup texture enabled",
-        description = "Whether to export the lookup texture",
-        default = True
-    )
-
-    # Checkbox whether to export the file mesh
-    FileMeshEnabled : BoolProperty(
-        name = "File mesh enabled",
-        description = "Whether to export a VAT mesh",
-        default = True
-    )
-
-    # Checkbox whether to export the JSON data
-    FileJSONDataEnabled : BoolProperty(
-        name = "JSON data enabled",
-        description = "Whether to export a separate JSON file that contains information on the VAT animation",
-        default = True
-    )
-
-    # Export settings for the position texture
-    FilePositionTextureFormat : EnumProperty(
-        name = "File position texture format",
-        description = "The format of the position texture",
-        items = [
-            ("8", "8 bit float", ""),
-            ("16", "16 bit float", "")
-        ],
-        default = "16"
-    )
-
-    # Export settings for the rotation texture
-    FileRotationTextureFormat : EnumProperty(
-        name = "File rotation texture format",
-        description = "The format of the rotation texture",
-        items = [
-            ("8", "8 bit float", ""),
-            ("16", "16 bit float", "")
-        ],
-        default = "8"
     )
 
     # Maximum export resolutions
@@ -186,6 +83,117 @@ class VATEXPORTER_PG_Properties(PropertyGroup):
         default = False
     )
     
+    # Settings for mesh
+    FileMeshName : StringProperty(
+        name = "File mesh name",
+        description = "The target file name of the generated mesh file",
+        default = "SM_VATMesh",
+        subtype = "FILE_NAME"
+    )
+    FileMeshEnabled : BoolProperty(
+        name = "File mesh enabled",
+        description = "Whether to export a VAT mesh",
+        default = True
+    )
+
+    # Position texture settings
+    FilePositionTexture : StringProperty(
+        name = "File position texture name",
+        description = "The target file name of the position texture",
+        default = "T_Simulation_VATP",
+        subtype = "FILE_NAME"
+    )
+    FilePositionTextureEnabled : BoolProperty(
+        name = "File position texture enabled",
+        description = "Whether to export a position texture",
+        default = True
+    )
+    FilePositionTextureFormat : EnumProperty(
+        name = "File position texture format",
+        description = "The format of the position texture",
+        items = [
+            ("8", "8 bit float", ""),
+            ("16", "16 bit float", "")
+        ],
+        default = "16"
+    )
+
+    # Rotation texture settings
+    FileRotationTexture : StringProperty(
+        name = "File rotation texture name",
+        description = "The target file name of the rotation texture",
+        default = "T_Simulation_VATN",
+        subtype = "FILE_NAME"
+    )
+    FileRotationTextureEnabled : BoolProperty(
+        name = "File rotation texture enabled",
+        description = "Whether to export a rotation texture",
+        default = True
+    )
+    FileRotationTextureFormat : EnumProperty(
+        name = "File rotation texture format",
+        description = "The format of the rotation texture",
+        items = [
+            ("8", "8 bit float", ""),
+            ("16", "16 bit float", "")
+        ],
+        default = "8"
+    )
+
+    # Lookup texture settings
+    FileLookUpTexture : StringProperty(
+        name = "File lookup texture name",
+        description = "The target file name for the lookup texture",
+        default = "T_Simulation_VATL",
+        subtype = "FILE_NAME"
+    )
+    FileLookUpTextureEnabled : BoolProperty(
+        name = "Lookup texture enabled",
+        description = "Whether to export the lookup texture",
+        default = True
+    )
+
+    # JSON settings
+    FileJSONData : StringProperty(
+        name = "JSON data file name",
+        description = "The target file name for the JSON file that contains additional simulation data that is required in the target engine",
+        default = "Simulation_DATA",
+        subtype = "FILE_NAME"
+    )
+    FileJSONDataEnabled : BoolProperty(
+        name = "JSON data enabled",
+        description = "Whether to export a separate JSON file that contains information on the VAT animation",
+        default = True
+    )   
+
+    # Scale texture settings
+    FileScaleTextureEnabled : BoolProperty(
+        name = "Scale texture enabled",
+        description = "Whether to enable encoding scaling data into a texture",
+        default = False
+    )
+    FileSingleChannelScaleEnabled : BoolProperty(
+        name = "Single channel scale",
+        description = "Check this box if the scale is uniform. If checked, the scale will be encoded into the position texture, which is more performant",
+        default = False
+    )
+    FileScaleTexture : StringProperty(
+        name = "Scale texture name",
+        description = "The target file name for the scale texture",
+        default = "T_Simulation_VATS",
+        subtype = "FILE_NAME"
+    )
+    FileScaleTextureFormat : EnumProperty(
+        name = "File scale texture format",
+        description = "The format of the scale texture",
+        items = [
+            ("8", "8 bit float", ""),
+            ("16", "16 bit float", "")
+        ],
+        default = "8"
+    )
+
+ 
 
 # Register class
 def register():

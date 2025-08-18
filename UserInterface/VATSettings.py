@@ -57,7 +57,7 @@ class VATEXPORTER_PT_ExportSection(Panel):
         if(properties.VATType == "SOFTBODY"): # Softbody
             layout.operator("vatexporter.rendersoftbody", text = "Export")
         elif(properties.VATType == "RIGIDBODY"): # Rigidbody
-            layout.operator("mesh.primitive_cube_add", text = "Export")
+            layout.operator("vatexporter.renderrigidbody", text = "Export")
         elif(properties.VATType == "FLUID"): # Fluid
             layout.operator("mesh.primitive_cube_add", text = "Export")
         else: # Particles

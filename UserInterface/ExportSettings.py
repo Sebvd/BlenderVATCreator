@@ -81,6 +81,25 @@ class VATEXPORTER_PT_ExportSettings(Panel):
             row.label(text = "Lookup texture name")
             row.prop(properties, "FileLookUpTexture", text = "")
 
+        # Section for the scale texture
+        if(properties.VATType == "RIGIDBODY"):
+            box = layout.box()
+            row = box.row()
+            row.prop(properties, "FileScaleTextureEnabled", text = "Scale texture")
+            row = box.row()
+            if(not properties.FileScaleTextureEnabled):
+                row.enabled = False
+            row.prop(properties, "FileSingleChannelScaleEnabled", text = "Single channel scale")
+            row1 = box.row()
+            row2 = box.row()
+            if((not properties.FileScaleTextureEnabled) or properties.FileSingleChannelScaleEnabled):
+                row1.enabled = False
+                row2.enabled = False
+            row1.label(text = "Scale texture name")
+            row1.prop(properties, "FileScaleTexture", text = "")
+            row2.label(text = "Format")
+            row2.prop(properties, "FileScaleTextureFormat", text = "")
+
 modules = [VATEXPORTER_PT_ExportSettings]
 
 # Register class

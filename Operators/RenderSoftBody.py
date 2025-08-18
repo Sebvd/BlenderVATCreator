@@ -1,11 +1,12 @@
 import bpy
-from bpy.types import Operator, Panel
+from bpy.types import Operator
 from bpy.utils import register_class, unregister_class
 from math import ceil, floor
 from mathutils import Vector
 import numpy as np
 import os
 import json
+from importlib import reload
 from .VATFunctions import (
     CreateTexture,
     FilterSelection, 
@@ -16,44 +17,7 @@ from .VATFunctions import (
     ConvertCoordinate
 )
 
-# Check if the export data is valid
-def IsExportValid():
-    # Get properties
-    properties = bpy.context.scene.VATExporter_RegularProperties
-    
-    # Check directory
-    BaseDirectory = bpy.path.abspath(properties.OutputDirectory)
-    if(os.path.isdir(BaseDirectory) == False):
-        Warning = "Target directory is not valid"
-        return False, Warning
-    
-    # Check file for meshes
-    FileMeshName = bpy.path.clean_name(properties.FileMeshName)
-    FileMeshEnabled = properties.FileMeshEnabled
-    if(FileMeshName == "" and FileMeshEnabled):
-        Warning = "Incorrect mesh name"
-        return False, Warning
-    # Check file name for JSON file
-    FileJSONData = bpy.path.clean_name(properties.FileJSONData)
-    FileJSONDataEnabled = properties.FileJSONDataEnabled
-    if(FileJSONData == "" and FileJSONDataEnabled):
-        Warning = "Incorrect JSON file name"
-        return False, Warning
-    # Check file name for position texture
-    FilePositionTexture = bpy.path.clean_name(properties.FilePositionTexture)
-    FilePositionTextureEnabled = properties.FilePositionTextureEnabled
-    if(FilePositionTexture == "" and FilePositionTextureEnabled):
-        Warning = "Incorrect position texture name"
-        return False, Warning
-    # Check file name for rotation texture
-    FileRotationTexture = bpy.path.clean_name(properties.FileRotationTexture)
-    FileRotationTextureEnabled = properties.FileRotationTextureEnabled
-    if(FileRotationTexture == "" and FileRotationTextureEnabled):
-        Warning = "Incorrect rotation texture name"
-        return False, Warning
-    # check if we can export based on the modifiers on the selection
 
-    return True, ""
 
 # Softbody calculation
 def RenderSoftbodyVAT():
@@ -197,7 +161,7 @@ def RemoveEdgeSplit(Objects : list[bpy.types.Object], EdgeSplitModifiers):
         Object.modifiers.remove(EdgeSplitModifiers[i])
 
 # Get the object data at a certain frame
-def GetObjectAtFrame(Object : bpy.types.Object, Frame):
+def GetObjectAtFrame(Object : bpy.types.Object, Frame, bShouldTransform : bool = True):
     # Base variables
     context = bpy.context
     scene = context.scene
@@ -207,7 +171,8 @@ def GetObjectAtFrame(Object : bpy.types.Object, Frame):
     DependencyGraph = context.view_layer.depsgraph
     CompareObject = Object.evaluated_get(DependencyGraph)
     TemporaryObject = bpy.data.meshes.new_from_object(CompareObject)
-    TemporaryObject.transform(Object.matrix_world)
+    if(bShouldTransform):
+        TemporaryObject.transform(Object.matrix_world)
 
     # Return
     return TemporaryObject
@@ -230,7 +195,7 @@ def GetObjectDataAtFrame(Object : bpy.types.Object, Frame, CompareVertices, Tota
         # Position calculation
         CompareVertex = CompareVertices[TotalVertexCount + Vertex.index].co
         Offset = ConvertCoordinate(Vertex.co - CompareVertex)
-        ConvertedOffset = (Offset[0], Offset[1], Offset[2], 1.0)
+        ConvertedOffset = (*Offset, 1.0)
         Positions[Vertex.index] = ConvertedOffset
 
         # Create new bounds & extents
@@ -241,7 +206,7 @@ def GetObjectDataAtFrame(Object : bpy.types.Object, Frame, CompareVertices, Tota
         # Normal calculation
         VertexNormal = ConvertCoordinate(Vertex.normal.copy())
         ConvertedNormal = UnsignVector(Vector((VertexNormal[0], VertexNormal[1], VertexNormal[2])))
-        Normals[Vertex.index] = (ConvertedNormal[0], ConvertedNormal[1], ConvertedNormal[2], 1.0)
+        Normals[Vertex.index] = (*ConvertedNormal, 1.0)
 
     bpy.data.meshes.remove(CompareMesh)
     return Positions, Normals, Bounds, False
@@ -252,7 +217,7 @@ def NormalizePositions(Positions, Bounds):
     MeasureBounds = [max((ceil(axis * 10000)/10000), 0.01) for axis in Bounds]
 
     # Move positions into range
-    NormalizedPositions = Positions / np.array((MeasureBounds[0], MeasureBounds[1], MeasureBounds[2], 1.0))
+    NormalizedPositions = Positions / np.array((*MeasureBounds, 1.0))
     NormalizedPositions += np.array((1,1,1,0))
     NormalizedPositions /= np.array((2,2,2,1))
     NormalizedPositions = np.clip(NormalizedPositions, 0, 1)
@@ -270,7 +235,7 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], VertexCount, FrameCount, S
     for Object in Objects:
         # Create a copy
         NewObject = Object.copy()
-        NewData = GetObjectAtFrame(Object, StartFrame)
+        NewData = GetObjectAtFrame(Object, StartFrame, False)
         NewObject.data = NewData
 
         # Apply the modifiers for each object (e.g., subsurf modifer can cause UV issues)
@@ -327,6 +292,44 @@ def CreateJSON(Bounds, ExtendsMin, ExtendsMax, properties, VertexCount):
     with open(TargetFile, "w") as File:
         json.dump(SimulationData, File, indent = 2)
 
+# Check if the export data is valid
+def IsDefaultExportValid():
+    # Get properties
+    properties = bpy.context.scene.VATExporter_RegularProperties
+    
+    # Check directory
+    BaseDirectory = bpy.path.abspath(properties.OutputDirectory)
+    if(os.path.isdir(BaseDirectory) == False):
+        Warning = "Target directory is not valid"
+        return False, Warning
+    
+    # Check file for meshes
+    FileMeshName = bpy.path.clean_name(properties.FileMeshName)
+    FileMeshEnabled = properties.FileMeshEnabled
+    if(FileMeshName == "" and FileMeshEnabled):
+        Warning = "Incorrect mesh name"
+        return False, Warning
+    # Check file name for JSON file
+    FileJSONData = bpy.path.clean_name(properties.FileJSONData)
+    FileJSONDataEnabled = properties.FileJSONDataEnabled
+    if(FileJSONData == "" and FileJSONDataEnabled):
+        Warning = "Incorrect JSON file name"
+        return False, Warning
+    # Check file name for position texture
+    FilePositionTexture = bpy.path.clean_name(properties.FilePositionTexture)
+    FilePositionTextureEnabled = properties.FilePositionTextureEnabled
+    if(FilePositionTexture == "" and FilePositionTextureEnabled):
+        Warning = "Incorrect position texture name"
+        return False, Warning
+    # Check file name for rotation texture
+    FileRotationTexture = bpy.path.clean_name(properties.FileRotationTexture)
+    FileRotationTextureEnabled = properties.FileRotationTextureEnabled
+    if(FileRotationTexture == "" and FileRotationTextureEnabled):
+        Warning = "Incorrect rotation texture name"
+        return False, Warning
+
+    return True, ""
+
 # Main function to render softbody
 class VATEXPORTER_OT_RenderSoftBody(Operator):
     bl_idname = "vatexporter.rendersoftbody"
@@ -350,7 +353,7 @@ class VATEXPORTER_OT_RenderSoftBody(Operator):
     # run the function
     def execute(self, context):
         # Check if we can export. If not, cancel the operation
-        bIsExportValid, Warning = IsExportValid()
+        bIsExportValid, Warning = IsDefaultExportValid()
         if(bIsExportValid == False):
             self.report({"WARNING"}, Warning)
             return {"CANCELLED"}

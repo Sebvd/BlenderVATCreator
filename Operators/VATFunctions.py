@@ -5,8 +5,9 @@ from mathutils import Vector
 import numpy as np
 import os
 
+
 # Filter objects so only to return objects of type mesh
-def FilterSelection(Objects : list[bpy.types.Object]):
+def FilterSelection(Objects : list[bpy.types.Object]) -> list[bpy.types.Object]:
     FilteredObjects = []
     for Object in Objects:
         if(Object.type == "MESH"):
@@ -137,9 +138,8 @@ def ExportWithLODs(Objects : list[bpy.types.Object]):
         bpy.ops.export_scene.fbx(
             filepath = ExportFile,
             use_selection = True,
-            bake_space_transform = True,
+            bake_space_transform = False,
             bake_anim = False
         )
 
-    return
 

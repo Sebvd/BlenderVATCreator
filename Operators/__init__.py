@@ -1,10 +1,14 @@
-from . import RenderSoftBody
+from . import (
+    RenderSoftBody,
+    VATFunctions,
+    RenderRigidBody
+)
 from importlib import reload
 
 from . import VATFunctions
 reload(VATFunctions)
 
-modules = [RenderSoftBody]
+modules = [RenderSoftBody, RenderRigidBody]
 
 def register():
     for module in modules:
