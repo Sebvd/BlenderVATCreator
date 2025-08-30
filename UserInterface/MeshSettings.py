@@ -33,7 +33,7 @@ class VATEXPORTER_UL_LODWidget(UIList):
 # Widget that draws the combined LOD menu
 class VATEXPORTER_PT_LODs(Panel):
     # Class properties
-    bl_label = "LOD settings"
+    bl_label = "Mesh settings"
     bl_idname = "VATEXPORTER_PT_LODs"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -46,8 +46,25 @@ class VATEXPORTER_PT_LODs(Panel):
         # Basic values
         layout = self.layout
         scene = context.scene
+        properties = scene.VATExporter_RegularProperties
+
+        # Rest pose frame
+        row = layout.row()
+        row.label(text = "Rest pose")
+        row.prop(properties, "RestPose", text = "")
+        if(properties.RestPose == "CUSTOM"):
+            row = layout.row()
+            row.label(text = "Frame")
+            row.prop(properties, "CustomRestPoseFrame", text = "")
+
+        # General mesh settings
+        if(properties.VATType == "SOFTBODY"):
+            row = layout.row()
+            row.prop(properties, "SplitVertices", text = "Split at hard edges")
 
         # LODs box
+        row = layout.row()
+        row.label(text = "LODs")
         row = layout.row()
         split = row.split(factor = 0.85)
         column = split.column()

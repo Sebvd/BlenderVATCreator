@@ -14,7 +14,8 @@ from .VATFunctions import (
     UnsignVector, 
     ExportWithLODs, 
     GetExtends,
-    ConvertCoordinate
+    ConvertCoordinate,
+    GetEvaluationFrame
 )
 
 
@@ -33,7 +34,8 @@ def RenderSoftbodyVAT():
     FrameSpacing = properties.FrameSpacing
 
     # Prepare selected objects
-    EdgeSplitModifiers, VertexCount, StartVertices, CompareMeshes, StartExtendsMin, StartExtendsMax = PrepareSelectedObjects(SelectedObjects, FrameStart)
+    EvaluationFrame = GetEvaluationFrame()
+    EdgeSplitModifiers, VertexCount, StartVertices, CompareMeshes, StartExtendsMin, StartExtendsMax = PrepareSelectedObjects(SelectedObjects, EvaluationFrame)
     FrameCount = min(ceil((FrameEnd - FrameStart + 1) / FrameSpacing), properties.ExportResolutionV)
     VertexCount = min(VertexCount, properties.ExportResolutionU)
     

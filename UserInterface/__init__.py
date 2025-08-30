@@ -1,13 +1,13 @@
 from . import (
     MainMenu,
+    MeshSettings,
     Properties,
     VATSettings,
-    LODSettings,
     ExportSettings
 )
 from importlib import reload
 
-modules = [MainMenu, Properties, VATSettings, LODSettings, ExportSettings]
+modules = [MainMenu, Properties, VATSettings, MeshSettings, ExportSettings]
 
 def register():
     for module in modules:

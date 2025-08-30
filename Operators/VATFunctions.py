@@ -142,4 +142,15 @@ def ExportWithLODs(Objects : list[bpy.types.Object]):
             bake_anim = False
         )
 
+# Gets the evaluation frame (for the restpose mesh)
+def GetEvaluationFrame():
+    scene = bpy.context.scene
+    properties = scene.VATExporter_RegularProperties
 
+    if(properties.RestPose == "RANGESTART"):
+        return scene.frame_start
+    elif(properties.RestPose == "RANGEEND"):
+        return scene.frame_end
+    else:
+        return properties.CustomCustomRestPoseFrame
+    

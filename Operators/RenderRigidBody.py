@@ -4,10 +4,12 @@ from bpy.utils import register_class, unregister_class
 from .VATFunctions import (
     FilterSelection,
     CompareBounds,
-    CreateTexture
+    CreateTexture,
+    GetExtends,
+    GetEvaluationFrame
 )
 import os
-from mathutils import Vector
+from mathutils import Vector, Matrix
 from math import ceil, floor
 import numpy as np
 
@@ -35,6 +37,7 @@ def RenderRigidBody():
     ScaleBounds = Vector((0.0, 0.0, 0.0))
     ExtendsMin = np.array([np.inf] * 3)
     ExtendsMax = np.array([np.inf * -1] * 3)
+    CompareLocations, StartExtendsMin, StartExtendsMax = PrepareSelectedObjects(SelectedObjects, GetEvaluationFrame())
 
     # Accumulate the VAT data
     for Frame in range(FrameStart, FrameEnd + 1):
@@ -46,15 +49,23 @@ def RenderRigidBody():
         # Loop over the objects and get their position
         VerticalPixelIndex = floor((Frame - FrameStart) / FrameSpacing)
         for i, Object in enumerate(SelectedObjects):
+            # Frame data
+            ObjectLocation = Object.matrix_world.translation
+            FrameLocation = ObjectLocation - CompareLocations[i]
+
             # Create the basic data arrays
             PixelIndex = VerticalPixelIndex + i
-            PixelPositions[PixelIndex] = (*Object.location, 1.0)
+            PixelPositions[PixelIndex] = (*FrameLocation, 1.0) 
             PixelNormals[PixelIndex] = Object.rotation_euler.to_quaternion()
             PixelScales[PixelIndex] = (*Object.scale, 1.0)
 
             # Create the bounds data
-            CompareBounds(PositionBounds, Object.location)
+            CompareBounds(PositionBounds, FrameLocation)
             CompareBounds(ScaleBounds, Object.scale)
+            Corners = [Object.matrix_world @ Vector(Corner) for Corner in Object.bound_box]
+            for Corner in Corners:
+                ExtendsMin = np.minimum(ExtendsMin, Corner)
+                ExtendsMax = np.maximum(ExtendsMax, Corner)
     
     # Convert data
     PositionBounds = [max((ceil(axis * 10000)/10000), 0.01) for axis in PositionBounds]
@@ -63,6 +74,8 @@ def RenderRigidBody():
     PixelNormals = NormalizePositions(PixelNormals, Vector((1.0, 1.0, 1.0)))
     PixelScales = NormalizePositions(PixelScales, ScaleBounds)
 
+    print(PositionBounds)
+
     # Create exports
     if(properties.FilePositionTextureEnabled):
         CreateTexture(PixelPositions, ObjectCount, FrameCount, properties.FilePositionTexture, properties.FilePositionTextureFormat)
@@ -70,22 +83,73 @@ def RenderRigidBody():
         CreateTexture(PixelNormals, ObjectCount, FrameCount, properties.FileRotationTexture, properties.FileRotationTextureFormat)
     if(properties.FileScaleTextureEnabled and (not properties.FileSingleChannelScaleEnabled)):
         CreateTexture(PixelScales, ObjectCount, FrameCount, properties.FileScaleTexture, properties.FileScaleTextureFormat)
+    if(properties.FileJSONDataEnabled):
+        OutputExtendsMin, OutputExtendsMax = GetExtends(ExtendsMin, ExtendsMax, StartExtendsMin, StartExtendsMax)
+        print(f"OutputExtendsMin: {OutputExtendsMin}")
+        print(f"OutputExtendsMax: {OutputExtendsMax}")
+        #CreateJSON(PositionBounds, ScaleBounds, OutputExtendsMin, OutputExtendsMax, properties, ObjectCount)
+        pass
 
     print("Rendering rigid body")
+
+# Prepare the objects at the evaluation frame
+def PrepareSelectedObjects(Objects : list[bpy.types.Object], EvaluationFrame : int, bShouldTransform : bool = True):
+    context = bpy.context
+    scene = context.scene
+    
+    StartExtendsMin = np.array([np.inf] * 3)
+    StartExtendsMax = np.array([np.inf * -1] * 3)
+    CompareLocations = []
+    for Object in Objects:
+        # Create compare meshes
+        scene.frame_set(EvaluationFrame)
+        DependencyGraph = context.view_layer.depsgraph
+        CompareObject = Object.evaluated_get(DependencyGraph)
+        CompareLocation = CompareObject.matrix_world.translation.copy()
+        CompareLocations.append(CompareLocation)
+
+        # Return extends
+        Corners = [Object.matrix_world @ Vector(Corner) for Corner in Object.bound_box]
+        for Corner in Corners:
+            StartExtendsMin = np.minimum(StartExtendsMin, Corner)
+            StartExtendsMax = np.maximum(StartExtendsMax, Corner)
+    
+    return CompareLocations, StartExtendsMin, StartExtendsMax
 
 # Bring positions to a range from 0-1 based on the maximum calculated bounds
 def NormalizePositions(Positions, Bounds):
     # Move positions into range
     NormalizedPositions = Positions / np.array((*Bounds, 1.0))
-    NormalizedPositions += np.array((1,1,1,0))
-    NormalizedPositions /= np.array((2,2,2,1))
+    NormalizedPositions += np.array((1,1,1,1))
+    NormalizedPositions /= np.array((2,2,2,2))
     NormalizedPositions = np.clip(NormalizedPositions, 0, 1)
 
     return NormalizedPositions
 
-# Create the JSON file for rigid body sims
-def CreateJSON():
+# Calculate the extends (for currect object culling after the vertex displacements in the target engine)
+def CalculateExtends():
     pass
+
+# Create the JSON file for rigid body sims
+def CreateJSON(PositionBounds, ScaleBounds, ExtendsMin, ExtendsMax, properties, ObjectCount):
+    pass
+
+# Get the object data at a certain frame
+def GetObjectAtFrame(Object : bpy.types.Object, Frame, bShouldTransform : bool = True):
+    # Base variables
+    context = bpy.context
+    scene = context.scene
+    scene.frame_set(Frame)
+
+    # Creating a new measure object at the current frame
+    DependencyGraph = context.view_layer.depsgraph
+    CompareObject = Object.evaluated_get(DependencyGraph)
+    TemporaryObject = bpy.data.meshes.new_from_object(CompareObject)
+    if(bShouldTransform):
+        TemporaryObject.transform(Object.matrix_world)
+
+    # Return
+    return TemporaryObject
 
 # Check if the export data is valid
 def IsDefaultExportValid():

@@ -35,6 +35,23 @@ class VATEXPORTER_PG_Properties(PropertyGroup):
         description = "The target directory to store the meshes in",
         subtype = "DIR_PATH"
     )
+    RestPose : EnumProperty(
+        name  = "Rest pose",
+        description = "Where to take the rest pose from (the mesh without the animations applied)",
+        items = [
+            ("RANGESTART", "Range Start", ""),
+            ("RANGEEND", "Range End", ""),
+            ("CUSTOM", "Custom", "")
+        ]
+    )
+    CustomRestPoseFrame : IntProperty(
+        name = "Custom rest pose frame",
+        description = "Which frame to take the rest pose from",
+        default = 1,
+        min = 0,
+        soft_min = 0,
+        soft_max = 256
+    )
 
     # Maximum export resolutions
     ExportResolutionU : IntProperty(

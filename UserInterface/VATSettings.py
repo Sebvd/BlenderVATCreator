@@ -33,10 +33,7 @@ class VATEXPORTER_PT_VATSettings(Panel):
         column.prop(properties, "ExportResolutionU", text = "")
         column.prop(properties, "ExportResolutionV", text = "")
 
-        # Split edges checkbox when softbody simulation is checked on
-        if(properties.VATType == "SOFTBODY"):
-            row = layout.row()
-            row.prop(properties, "SplitVertices", text = "Split at hard edges")
+
 
 class VATEXPORTER_PT_ExportSection(Panel):
     # Class variables
