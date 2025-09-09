@@ -1,10 +1,9 @@
 # This files consists of functions that are reused across the different VAT modes
 
 import bpy
-from mathutils import Vector
+from mathutils import Vector, Matrix, Quaternion
 import numpy as np
 import os
-
 
 # Filter objects so only to return objects of type mesh
 def FilterSelection(Objects : list[bpy.types.Object]) -> list[bpy.types.Object]:
@@ -24,7 +23,7 @@ def CompareBounds(CurrentBounds, CompareBounds):
 # Convert the given vector to the correct coordinate system
 def ConvertCoordinate(Coordinate) -> Vector:
     properties = bpy.context.scene.VATExporter_RegularProperties
-    NewCoordinate = Coordinate
+    NewCoordinate = Coordinate.copy()
     # Flip coordinates based on input
     if(properties.FlipX):
         NewCoordinate *= Vector((-1.0, 1.0, 1.0))
@@ -73,12 +72,11 @@ def CreateTexture(Pixels, TextureWidth, TextureHeight, FileName, Format):
         width = TextureWidth,
         height = TextureHeight,
         alpha = True,
-        float_buffer = True
+        float_buffer = True,
+        is_data = True
     )
     
     # Set the texture settings
-    Texture.colorspace_settings.is_data = True
-    Texture.colorspace_settings.name = "Non-Color"
     Texture.pixels = Pixels.ravel()
 
     # Export the textures to disk
@@ -86,8 +84,12 @@ def CreateTexture(Pixels, TextureWidth, TextureHeight, FileName, Format):
     ExportEnvironment = bpy.data.scenes.new("ImageExportEnvironment")
     ExportSettings = ExportEnvironment.render.image_settings
     ExportSettings.color_depth = Format
+    ExportSettings.color_mode = "RGBA"
+    ExportSettings.compression = 0
+    ExportSettings.file_format = "OPEN_EXR"
+    ExportSettings.linear_colorspace_settings.name = "Non-Color"
     ExportDirectory = bpy.path.abspath(properties.OutputDirectory)
-    TargetFile = os.path.join(ExportDirectory, FileName + ".png")
+    TargetFile = os.path.join(ExportDirectory, FileName + ".exr")
     Texture.save_render(TargetFile, scene = ExportEnvironment, quality = 100)
     
     # Clean up
@@ -108,6 +110,7 @@ def ExportWithLODs(Objects : list[bpy.types.Object]):
     # Give each object a decimate modifier, store the modifier in an array
     DecimateModifiers = []
     for Object in Objects:
+        Object.select_set(True)
         DecimateModifier = Object.modifiers.new("Decimate", "DECIMATE")
         DecimateModifier.angle_limit = 0.0
         DecimateModifier.decimate_type = "DISSOLVE"
@@ -153,4 +156,56 @@ def GetEvaluationFrame():
         return scene.frame_end
     else:
         return properties.CustomCustomRestPoseFrame
+
+def ConvertQuaternion(RawQuaternion : Quaternion) -> Quaternion:
+    # Transform the quaternion based on the coordinate system given in the input
+    properties = bpy.context.scene.VATExporter_RegularProperties
+    CoordinateSystem = properties.CoordinateSystem
+    FlipX = -1.0 if properties.FlipX else 1.0
+    FlipY = -1.0 if properties.FlipY else 1.0
+    FlipZ = -1.0 if properties.FlipZ else 1.0
+    BasisMatrix = Matrix(((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)))
+    match CoordinateSystem:
+        case "xyz":
+            BasisMatrix = Matrix((
+                (1.0 * FlipX, 0.0, 0.0),
+                (0.0, 1.0 * FlipY, 0.0),
+                (0.0, 0.0, 1.0 * FlipZ)
+            ))
+        case "xzy":
+            BasisMatrix = Matrix((
+                (1.0 * FlipX, 0.0, 0.0),
+                (0.0, 0.0, 1.0 * FlipZ),
+                (0.0, 1.0 * FlipY, 0.0)
+            ))
+        case "yxz":
+            BasisMatrix = Matrix((
+                (0.0, 1.0 * FlipY, 0.0),
+                (1.0 * FlipX, 0.0, 0.0),
+                (0.0, 0.0, 1.0 * FlipZ)
+            ))
+        case "yzx":
+            BasisMatrix = Matrix((
+                (0.0, 1.0 * FlipY, 0.0),
+                (0.0, 0.0, 1.0 * FlipZ),
+                (1.0 * FlipX, 0.0, 0.0)
+            ))
+        case "zxy":
+            BasisMatrix = Matrix((
+                (0.0, 0.0, 1.0 * FlipZ),
+                (1.0 * FlipX, 0.0, 0.0),
+                (0.0, 1.0 * FlipY, 0.0)
+            ))
+        case "zyx":
+            BasisMatrix = Matrix((
+                (0.0, 0.0, 1.0 * FlipZ),
+                (0.0, 1.0 * FlipY, 0.0),
+                (1.0 * FlipX, 0.0, 0.0)
+            ))
+
+    ConvertedRotation = (BasisMatrix @ RawQuaternion.to_matrix() @ BasisMatrix.transposed()).to_quaternion()
+
+    # Convert the quaternion from wxyz to xyzw
+    NewQuaternion = Quaternion((ConvertedRotation[1], ConvertedRotation[2], ConvertedRotation[3], ConvertedRotation[0]))
     
+    return NewQuaternion

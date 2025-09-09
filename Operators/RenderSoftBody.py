@@ -18,8 +18,6 @@ from .VATFunctions import (
     GetEvaluationFrame
 )
 
-
-
 # Softbody calculation
 def RenderSoftbodyVAT():
     # Main starting data
@@ -101,16 +99,17 @@ def RenderSoftbodyVAT():
         return True, "The polycount is changing per frame, which is not allowed with VATs. Check your modifiers."
 
     # Get the correct position data normalized for pixels and get the bounds
-    PixelPositions, Bounds = NormalizePositions(PixelPositions, Bounds)
-    OutputExtendsMin, OutputExtendsMax = GetExtends(ExtendsMin, ExtendsMax, StartExtendsMin, StartExtendsMax)
+    PixelPositions, Bounds = NormalizePositions(PixelPositions, Bounds)    
 
     # Create the export data
-    CreateVATMeshes(SelectedObjects, VertexCount, FrameCount, FrameStart)
+    if(properties.FileMeshEnabled):
+        CreateVATMeshes(SelectedObjects, VertexCount, FrameCount, FrameStart)
     if(properties.FilePositionTextureEnabled):
         CreateTexture(PixelPositions, VertexCount, FrameCount, properties.FilePositionTexture, properties.FilePositionTextureFormat)
     if(properties.FileRotationTextureEnabled):
         CreateTexture(PixelNormals, VertexCount, FrameCount, properties.FileRotationTexture, properties.FileRotationTextureFormat)
     if(properties.FileJSONDataEnabled):
+        OutputExtendsMin, OutputExtendsMax = GetExtends(ExtendsMin, ExtendsMax, StartExtendsMin, StartExtendsMax)
         CreateJSON(Bounds, OutputExtendsMin, OutputExtendsMax, properties, VertexCount)
 
     # Reset selected objects to their original state
@@ -261,8 +260,6 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], VertexCount, FrameCount, S
 
         # Link the object to the scene
         bpy.context.collection.objects.link(NewObject)
-        NewObject.select_set(True)
-
         NewObjects.append(NewObject)
         NewDatas.append(NewData)
 
@@ -273,7 +270,6 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], VertexCount, FrameCount, S
 
     # Clean up
     for i, NewObject in enumerate(NewObjects):
-        
         bpy.data.objects.remove(NewObject)
         bpy.data.meshes.remove(NewDatas[i])
 

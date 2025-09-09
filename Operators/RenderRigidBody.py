@@ -1,17 +1,22 @@
 import bpy
+import os
+import json
 from bpy.types import Operator
 from bpy.utils import register_class, unregister_class
+import mathutils
+from math import ceil, floor
+import numpy as np
 from .VATFunctions import (
     FilterSelection,
     CompareBounds,
     CreateTexture,
     GetExtends,
-    GetEvaluationFrame
+    GetEvaluationFrame,
+    ExportWithLODs,
+    ConvertCoordinate,
+    ConvertQuaternion
 )
-import os
-from mathutils import Vector, Matrix
-from math import ceil, floor
-import numpy as np
+
 
 # Executing the rigid body VAT render
 def RenderRigidBody(): 
@@ -33,8 +38,8 @@ def RenderRigidBody():
     PixelNormals = np.ones((TextureArraySize, 4))
     PixelScales = np.ones((TextureArraySize, 4))
 
-    PositionBounds = Vector((0.0, 0.0, 0.0))
-    ScaleBounds = Vector((0.0, 0.0, 0.0))
+    PositionBounds = mathutils.Vector((0.0, 0.0, 0.0))
+    ScaleBounds = mathutils.Vector((0.0, 0.0, 0.0))
     ExtendsMin = np.array([np.inf] * 3)
     ExtendsMax = np.array([np.inf * -1] * 3)
     CompareLocations, StartExtendsMin, StartExtendsMax = PrepareSelectedObjects(SelectedObjects, GetEvaluationFrame())
@@ -55,14 +60,14 @@ def RenderRigidBody():
 
             # Create the basic data arrays
             PixelIndex = VerticalPixelIndex + i
-            PixelPositions[PixelIndex] = (*FrameLocation, 1.0) 
-            PixelNormals[PixelIndex] = Object.rotation_euler.to_quaternion()
+            PixelPositions[PixelIndex] = (*FrameLocation, 1.0)
+            PixelNormals[PixelIndex] = ConvertQuaternion(Object.rotation_euler.to_quaternion())
             PixelScales[PixelIndex] = (*Object.scale, 1.0)
 
             # Create the bounds data
             CompareBounds(PositionBounds, FrameLocation)
             CompareBounds(ScaleBounds, Object.scale)
-            Corners = [Object.matrix_world @ Vector(Corner) for Corner in Object.bound_box]
+            Corners = [Object.matrix_world @ mathutils.Vector(Corner) for Corner in Object.bound_box]
             for Corner in Corners:
                 ExtendsMin = np.minimum(ExtendsMin, Corner)
                 ExtendsMax = np.maximum(ExtendsMax, Corner)
@@ -71,24 +76,22 @@ def RenderRigidBody():
     PositionBounds = [max((ceil(axis * 10000)/10000), 0.01) for axis in PositionBounds]
     ScaleBounds = [max((ceil(axis * 10000)/10000), 0.01) for axis in ScaleBounds]
     PixelPositions = NormalizePositions(PixelPositions, PositionBounds)
-    PixelNormals = NormalizePositions(PixelNormals, Vector((1.0, 1.0, 1.0)))
+    PixelNormals = NormalizePositions(PixelNormals, mathutils.Vector((1.0, 1.0, 1.0)))
     PixelScales = NormalizePositions(PixelScales, ScaleBounds)
 
-    print(PositionBounds)
-
     # Create exports
+    if(properties.FileMeshEnabled):
+        CreateVATMeshes(SelectedObjects, FrameStart, FrameCount, ObjectCount)
     if(properties.FilePositionTextureEnabled):
         CreateTexture(PixelPositions, ObjectCount, FrameCount, properties.FilePositionTexture, properties.FilePositionTextureFormat)
     if(properties.FileRotationTextureEnabled):
         CreateTexture(PixelNormals, ObjectCount, FrameCount, properties.FileRotationTexture, properties.FileRotationTextureFormat)
+        #CreateTexture(PixelNormals, ObjectCount, FrameCount, properties.FileRotationTexture, "32")
     if(properties.FileScaleTextureEnabled and (not properties.FileSingleChannelScaleEnabled)):
         CreateTexture(PixelScales, ObjectCount, FrameCount, properties.FileScaleTexture, properties.FileScaleTextureFormat)
     if(properties.FileJSONDataEnabled):
         OutputExtendsMin, OutputExtendsMax = GetExtends(ExtendsMin, ExtendsMax, StartExtendsMin, StartExtendsMax)
-        print(f"OutputExtendsMin: {OutputExtendsMin}")
-        print(f"OutputExtendsMax: {OutputExtendsMax}")
-        #CreateJSON(PositionBounds, ScaleBounds, OutputExtendsMin, OutputExtendsMax, properties, ObjectCount)
-        pass
+        CreateJSON(PositionBounds, ScaleBounds, OutputExtendsMin, OutputExtendsMax, properties, ObjectCount)
 
     print("Rendering rigid body")
 
@@ -109,7 +112,7 @@ def PrepareSelectedObjects(Objects : list[bpy.types.Object], EvaluationFrame : i
         CompareLocations.append(CompareLocation)
 
         # Return extends
-        Corners = [Object.matrix_world @ Vector(Corner) for Corner in Object.bound_box]
+        Corners = [Object.matrix_world @ mathutils.Vector(Corner) for Corner in Object.bound_box]
         for Corner in Corners:
             StartExtendsMin = np.minimum(StartExtendsMin, Corner)
             StartExtendsMax = np.maximum(StartExtendsMax, Corner)
@@ -126,13 +129,71 @@ def NormalizePositions(Positions, Bounds):
 
     return NormalizedPositions
 
-# Calculate the extends (for currect object culling after the vertex displacements in the target engine)
-def CalculateExtends():
-    pass
-
 # Create the JSON file for rigid body sims
 def CreateJSON(PositionBounds, ScaleBounds, ExtendsMin, ExtendsMax, properties, ObjectCount):
-    pass
+    # Create the dict
+    SimulationData = dict()
+    SimulationData["FPS"] = bpy.context.scene.render.fps
+    SimulationData["PositionBounds"] = PositionBounds
+    SimulationData["ScaleBounds"] = ScaleBounds
+    SimulationData["ExtendsMin"] = ExtendsMin.tolist()
+    SimulationData["ExtendsMax"] = ExtendsMax.tolist()
+    SimulationData["ObjectCount"] = ObjectCount
+
+    # Export to JSON file
+    TargetDirectory = bpy.path.abspath(properties.OutputDirectory)
+    FileName = bpy.path.clean_name(properties.FileJSONData)
+    TargetFile = os.path.join(TargetDirectory, FileName + ".json")
+    with open(TargetFile, "w") as File:
+        json.dump(SimulationData, File, indent = 2)
+
+def CreateVATMeshes(Objects : list[bpy.types.Object], StartFrame, FrameCount, ObjectCount):
+    scene = bpy.context.scene
+    scene.frame_set(StartFrame)
+    bpy.ops.Object.select_all(action = "DESELECT")
+    NewObjects = []
+    NewDatas = []
+    for i, Object in enumerate(Objects):
+        # Create a copy of the object
+        NewObject = Object.copy()
+        NewData = GetObjectAtFrame(Object, StartFrame, False)
+        NewObject.data = NewData
+
+        # Create the UV data
+        DistanceToTop = 1.0 / FrameCount * 0.5
+
+        # Setting the UVs (sample texture UVs)
+        PixelUVLayer = NewObject.data.uv_layers.new(name = "PixelUVs")
+        OriginUVLayer1 = NewObject.data.uv_layers.new(name = "OriginUVs1")
+        OriginUVLayer2 = NewObject.data.uv_layers.new(name = "OriginUVs2")
+        Vertices = NewObject.data.vertices
+        for Loop in NewObject.data.loops:
+            PixelUVLayer.data[Loop.index].uv = (
+                (i + 0.5) / ObjectCount,
+                1.0 -  DistanceToTop
+            )
+            VertexLocation = ConvertCoordinate(Vertices[Loop.vertex_index].co)
+            OriginUVLayer1.data[Loop.index].uv = (
+                VertexLocation[0],
+                1.0
+            )
+            OriginUVLayer2.data[Loop.index].uv = (
+                VertexLocation[1],
+                1.0 - VertexLocation[2]
+            )
+
+        bpy.context.collection.objects.link(NewObject)
+        NewObjects.append(NewObject)
+        NewDatas.append(NewData)
+    
+    # Export
+    ExportWithLODs(NewObjects)
+
+    # Remove the objects and meshes after we were done with them
+    for NewObject, NewData in zip(NewObjects, NewDatas):
+        bpy.data.objects.remove(NewObject)
+        bpy.data.meshes.remove(NewData)
+        pass
 
 # Get the object data at a certain frame
 def GetObjectAtFrame(Object : bpy.types.Object, Frame, bShouldTransform : bool = True):

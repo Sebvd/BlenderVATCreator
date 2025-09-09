@@ -1,4 +1,4 @@
-from bpy.types import Panel
+from bpy.types import Panel, Operator
 from bpy.utils import register_class, unregister_class
 
 class VATEXPORTER_PT_VATSettings(Panel):
@@ -8,6 +8,15 @@ class VATEXPORTER_PT_VATSettings(Panel):
     bl_parent_id = "VATEXPORTER_PT_MainSettings"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
+
+    # Draw header
+    def draw_header_preset(self, context):
+        layout = self.layout
+        layout.operator("vatexporter.setenginedefault", 
+                        text = "", 
+                        icon = "PRESET",
+                        emboss = False
+                        )
 
     # Draw UI
     def draw(self, context):
@@ -32,8 +41,6 @@ class VATEXPORTER_PT_VATSettings(Panel):
         row.prop(properties, "FlipZ", text = "Z")
         column.prop(properties, "ExportResolutionU", text = "")
         column.prop(properties, "ExportResolutionV", text = "")
-
-
 
 class VATEXPORTER_PT_ExportSection(Panel):
     # Class variables
@@ -60,7 +67,17 @@ class VATEXPORTER_PT_ExportSection(Panel):
         else: # Particles
             layout.operator("mesh.primitive_cube_add", text = "Export")
 
-modules = [VATEXPORTER_PT_VATSettings, VATEXPORTER_PT_ExportSection]
+# class VATEXPORTER_PT_EngineDefaultsList(Panel):
+#     bl_
+
+class VATEXPORTER_OT_SetEngineDefaults(Operator):
+    bl_idname = "vatexporter.setenginedefault"
+    bl_label = "automatically sets the correct coordinate system for the selected game engine"
+
+    def execute(self, context):
+        return {"FINISHED"}
+
+modules = [VATEXPORTER_PT_VATSettings, VATEXPORTER_PT_ExportSection, VATEXPORTER_OT_SetEngineDefaults]
 
 # Register class
 def register():
@@ -71,6 +88,7 @@ def register():
 def unregister():
     for module in modules:
         unregister_class(module)
+
 
 # Debug register
 if __name__ == "__main__":
