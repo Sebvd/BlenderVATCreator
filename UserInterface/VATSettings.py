@@ -1,5 +1,6 @@
-from bpy.types import Panel, Operator
+from bpy.types import Panel, Menu, Operator
 from bpy.utils import register_class, unregister_class
+from bpy.props import EnumProperty
 
 class VATEXPORTER_PT_VATSettings(Panel):
     # Class variables
@@ -12,11 +13,12 @@ class VATEXPORTER_PT_VATSettings(Panel):
     # Draw header
     def draw_header_preset(self, context):
         layout = self.layout
-        layout.operator("vatexporter.setenginedefault", 
+        operator = layout.operator("wm.call_menu", 
                         text = "", 
                         icon = "PRESET",
                         emboss = False
                         )
+        operator.name = "VATEXPORTER_MT_EnginePresets"
 
     # Draw UI
     def draw(self, context):
@@ -67,17 +69,68 @@ class VATEXPORTER_PT_ExportSection(Panel):
         else: # Particles
             layout.operator("mesh.primitive_cube_add", text = "Export")
 
-# class VATEXPORTER_PT_EngineDefaultsList(Panel):
-#     bl_
+class VATEXPORTER_MT_EnginePresets(Menu):
+    bl_idname = "VATEXPORTER_MT_EnginePresets"
+    bl_label = "Engine presets"
 
-class VATEXPORTER_OT_SetEngineDefaults(Operator):
-    bl_idname = "vatexporter.setenginedefault"
-    bl_label = "automatically sets the correct coordinate system for the selected game engine"
+    def draw(self, context):
+        layout = self.layout
+        column = layout.column()
+        column.operator("vatexporter.selectenginepreset", text = "Blender (default)").EngineOption = "BLENDER"
+        column.operator("vatexporter.selectenginepreset", text = "Unreal Engine (pre 5.6)").EngineOption = "OLDUNREAL"
+        column.operator("vatexporter.selectenginepreset", text = "Unreal Engine").EngineOption = "NEWUNREAL"
+        column.operator("vatexporter.selectenginepreset", text = "Unity").EngineOption = "UNITY"
+        column.operator("vatexporter.selectenginepreset", text = "Godot").EngineOption = "GODOT"
+
+class VATEXPORTER_OT_SelectEnginePreset(Operator):
+    bl_idname = "vatexporter.selectenginepreset"
+    bl_label = "Select engine preset"
+    bl_options = {"REGISTER"}
+
+    EngineOption : EnumProperty(
+        name = "",
+        description = "Preset of target engine to use",
+        items = [
+            ("BLENDER", "Blender (default)", ""),
+            ("OLDUNREAL", "Unreal Engine (old)", ""),
+            ("NEWUNREAL", "Unreal Engine", ""),
+            ("UNITY", "Unity", ""),
+            ("GODOT", "Godot", "")
+        ]
+    )
 
     def execute(self, context):
+        EngineOption = self.EngineOption
+        properties = context.scene.VATExporter_RegularProperties
+        match EngineOption:
+            case "BLENDER":
+                properties.FlipX = False
+                properties.FlipY = False
+                properties.FlipZ = False
+                properties.CoordinateSystem = "xyz"
+            case "OLDUNREAL":
+                properties.FlipX = False
+                properties.FlipY = True
+                properties.FlipZ = False
+                properties.CoordinateSystem = "xyz"
+            case "NEWUNREAL":
+                properties.FlipX = False
+                properties.FlipY = False
+                properties.FlipZ = False
+                properties.CoordinateSystem = "xzy"
+            case "UNITY":
+                properties.FlipX = False
+                properties.FlipY = False
+                properties.FlipZ = False
+                properties.CoordinateSystem = "xzy"
+            case "GODOT":
+                properties.FlipX = False
+                properties.FlipY = True
+                properties.FlipZ = False
+                properties.CoordinateSystem = "xzy"
         return {"FINISHED"}
 
-modules = [VATEXPORTER_PT_VATSettings, VATEXPORTER_PT_ExportSection, VATEXPORTER_OT_SetEngineDefaults]
+modules = [VATEXPORTER_PT_VATSettings, VATEXPORTER_PT_ExportSection, VATEXPORTER_MT_EnginePresets, VATEXPORTER_OT_SelectEnginePreset]
 
 # Register class
 def register():

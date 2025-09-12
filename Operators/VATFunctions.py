@@ -21,30 +21,32 @@ def CompareBounds(CurrentBounds, CompareBounds):
             CurrentBounds[i] = abs(CompareBounds[i])
 
 # Convert the given vector to the correct coordinate system
-def ConvertCoordinate(Coordinate) -> Vector:
+def ConvertCoordinate(Coordinate, FlipAxes = True, SwizzleAxes = True) -> Vector:
     properties = bpy.context.scene.VATExporter_RegularProperties
     NewCoordinate = Coordinate.copy()
     # Flip coordinates based on input
-    if(properties.FlipX):
-        NewCoordinate *= Vector((-1.0, 1.0, 1.0))
-    if(properties.FlipY):
-        NewCoordinate *= Vector((1.0, -1.0, 1.0))
-    if(properties.FlipZ):
-        NewCoordinate *= Vector((1.0, 1.0, -1.0))
+    if(FlipAxes):
+        if(properties.FlipX):
+            NewCoordinate *= Vector((-1.0, 1.0, 1.0))
+        if(properties.FlipY):
+            NewCoordinate *= Vector((1.0, -1.0, 1.0))
+        if(properties.FlipZ):
+            NewCoordinate *= Vector((1.0, 1.0, -1.0))
 
     # Rearrange coordinate channels
-    CoordinateSystem = properties.CoordinateSystem
-    match CoordinateSystem:
-        case "xzy":
-            NewCoordinate = Vector((NewCoordinate[0], NewCoordinate[2], NewCoordinate[1]))
-        case "yxz":
-            NewCoordinate = Vector((NewCoordinate[1], NewCoordinate[0], NewCoordinate[2]))
-        case "yzx":
-            NewCoordinate = Vector((NewCoordinate[1], NewCoordinate[2], NewCoordinate[0]))
-        case "zxy":
-            NewCoordinate = Vector((NewCoordinate[2], NewCoordinate[0], NewCoordinate[1]))
-        case "zyx":
-            NewCoordinate = Vector((NewCoordinate[2], NewCoordinate[1], NewCoordinate[0]))
+    if(SwizzleAxes):
+        CoordinateSystem = properties.CoordinateSystem
+        match CoordinateSystem:
+            case "xzy":
+                NewCoordinate = Vector((NewCoordinate[0], NewCoordinate[2], NewCoordinate[1]))
+            case "yxz":
+                NewCoordinate = Vector((NewCoordinate[1], NewCoordinate[0], NewCoordinate[2]))
+            case "yzx":
+                NewCoordinate = Vector((NewCoordinate[1], NewCoordinate[2], NewCoordinate[0]))
+            case "zxy":
+                NewCoordinate = Vector((NewCoordinate[2], NewCoordinate[0], NewCoordinate[1]))
+            case "zyx":
+                NewCoordinate = Vector((NewCoordinate[2], NewCoordinate[1], NewCoordinate[0]))
 
     return NewCoordinate
 

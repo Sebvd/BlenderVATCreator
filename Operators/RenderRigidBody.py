@@ -3,7 +3,7 @@ import os
 import json
 from bpy.types import Operator
 from bpy.utils import register_class, unregister_class
-import mathutils
+from mathutils import Vector
 from math import ceil, floor
 import numpy as np
 from .VATFunctions import (
@@ -38,11 +38,11 @@ def RenderRigidBody():
     PixelNormals = np.ones((TextureArraySize, 4))
     PixelScales = np.ones((TextureArraySize, 4))
 
-    PositionBounds = mathutils.Vector((0.0, 0.0, 0.0))
-    ScaleBounds = mathutils.Vector((0.0, 0.0, 0.0))
+    PositionBounds = Vector((0.0, 0.0, 0.0))
+    ScaleBounds = Vector((0.0, 0.0, 0.0))
     ExtendsMin = np.array([np.inf] * 3)
     ExtendsMax = np.array([np.inf * -1] * 3)
-    CompareLocations, StartExtendsMin, StartExtendsMax = PrepareSelectedObjects(SelectedObjects, GetEvaluationFrame())
+    CompareLocations, StartScales, StartExtendsMin, StartExtendsMax = PrepareSelectedObjects(SelectedObjects, GetEvaluationFrame())
 
     # Accumulate the VAT data
     for Frame in range(FrameStart, FrameEnd + 1):
@@ -55,19 +55,20 @@ def RenderRigidBody():
         VerticalPixelIndex = floor((Frame - FrameStart) / FrameSpacing)
         for i, Object in enumerate(SelectedObjects):
             # Frame data
-            ObjectLocation = Object.matrix_world.translation
-            FrameLocation = ObjectLocation - CompareLocations[i]
+            FrameLocation = ConvertCoordinate(Object.matrix_world.translation) - CompareLocations[i]
+            CurrentScale = ConvertCoordinate(Object.scale, FlipAxes = False)
+            FrameScale = Vector([CurrentScale[j] / StartScales[i][j] for j in range(3)])
 
             # Create the basic data arrays
             PixelIndex = VerticalPixelIndex + i
             PixelPositions[PixelIndex] = (*FrameLocation, 1.0)
             PixelNormals[PixelIndex] = ConvertQuaternion(Object.rotation_euler.to_quaternion())
-            PixelScales[PixelIndex] = (*Object.scale, 1.0)
+            PixelScales[PixelIndex] = (*FrameScale, 1.0)
 
             # Create the bounds data
             CompareBounds(PositionBounds, FrameLocation)
-            CompareBounds(ScaleBounds, Object.scale)
-            Corners = [Object.matrix_world @ mathutils.Vector(Corner) for Corner in Object.bound_box]
+            CompareBounds(ScaleBounds, FrameScale)
+            Corners = [Object.matrix_world @ Vector(Corner) for Corner in Object.bound_box]
             for Corner in Corners:
                 ExtendsMin = np.minimum(ExtendsMin, Corner)
                 ExtendsMax = np.maximum(ExtendsMax, Corner)
@@ -76,7 +77,7 @@ def RenderRigidBody():
     PositionBounds = [max((ceil(axis * 10000)/10000), 0.01) for axis in PositionBounds]
     ScaleBounds = [max((ceil(axis * 10000)/10000), 0.01) for axis in ScaleBounds]
     PixelPositions = NormalizePositions(PixelPositions, PositionBounds)
-    PixelNormals = NormalizePositions(PixelNormals, mathutils.Vector((1.0, 1.0, 1.0)))
+    PixelNormals = NormalizePositions(PixelNormals, Vector((1.0, 1.0, 1.0)))
     PixelScales = NormalizePositions(PixelScales, ScaleBounds)
 
     # Create exports
@@ -93,8 +94,6 @@ def RenderRigidBody():
         OutputExtendsMin, OutputExtendsMax = GetExtends(ExtendsMin, ExtendsMax, StartExtendsMin, StartExtendsMax)
         CreateJSON(PositionBounds, ScaleBounds, OutputExtendsMin, OutputExtendsMax, properties, ObjectCount)
 
-    print("Rendering rigid body")
-
 # Prepare the objects at the evaluation frame
 def PrepareSelectedObjects(Objects : list[bpy.types.Object], EvaluationFrame : int, bShouldTransform : bool = True):
     context = bpy.context
@@ -103,21 +102,24 @@ def PrepareSelectedObjects(Objects : list[bpy.types.Object], EvaluationFrame : i
     StartExtendsMin = np.array([np.inf] * 3)
     StartExtendsMax = np.array([np.inf * -1] * 3)
     CompareLocations = []
+    StartScales = []
     for Object in Objects:
         # Create compare meshes
         scene.frame_set(EvaluationFrame)
         DependencyGraph = context.view_layer.depsgraph
         CompareObject = Object.evaluated_get(DependencyGraph)
-        CompareLocation = CompareObject.matrix_world.translation.copy()
+        CompareLocation = ConvertCoordinate(CompareObject.matrix_world.translation.copy())
         CompareLocations.append(CompareLocation)
+        StartScale = Vector((ConvertCoordinate(CompareObject.scale.copy(), FlipAxes = False)))
+        StartScales.append(StartScale)
 
         # Return extends
-        Corners = [Object.matrix_world @ mathutils.Vector(Corner) for Corner in Object.bound_box]
+        Corners = [Object.matrix_world @ Vector(Corner) for Corner in Object.bound_box]
         for Corner in Corners:
-            StartExtendsMin = np.minimum(StartExtendsMin, Corner)
-            StartExtendsMax = np.maximum(StartExtendsMax, Corner)
+            StartExtendsMin = np.minimum(StartExtendsMin, ConvertCoordinate(Corner))
+            StartExtendsMax = np.maximum(StartExtendsMax, ConvertCoordinate(Corner))
     
-    return CompareLocations, StartExtendsMin, StartExtendsMax
+    return CompareLocations, StartScales, StartExtendsMin, StartExtendsMax
 
 # Bring positions to a range from 0-1 based on the maximum calculated bounds
 def NormalizePositions(Positions, Bounds):
@@ -156,7 +158,7 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], StartFrame, FrameCount, Ob
     for i, Object in enumerate(Objects):
         # Create a copy of the object
         NewObject = Object.copy()
-        NewData = GetObjectAtFrame(Object, StartFrame, False)
+        NewData = GetObjectAtFrame(Object, StartFrame, True)
         NewObject.data = NewData
 
         # Create the UV data
@@ -167,6 +169,7 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], StartFrame, FrameCount, Ob
         OriginUVLayer1 = NewObject.data.uv_layers.new(name = "OriginUVs1")
         OriginUVLayer2 = NewObject.data.uv_layers.new(name = "OriginUVs2")
         Vertices = NewObject.data.vertices
+
         for Loop in NewObject.data.loops:
             PixelUVLayer.data[Loop.index].uv = (
                 (i + 0.5) / ObjectCount,
@@ -187,6 +190,7 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], StartFrame, FrameCount, Ob
         NewDatas.append(NewData)
     
     # Export
+    NewObject.data.transform(Object.matrix_world.inverted())
     ExportWithLODs(NewObjects)
 
     # Remove the objects and meshes after we were done with them
