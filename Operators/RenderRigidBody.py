@@ -1,6 +1,7 @@
 import bpy
 import os
 import json
+import bmesh
 from bpy.types import Operator
 from bpy.utils import register_class, unregister_class
 from mathutils import Vector
@@ -21,6 +22,7 @@ from .VATFunctions import (
 # Executing the rigid body VAT render
 def RenderRigidBody(): 
     # Basic vars
+    print("Collecting data")
     StartSelection = bpy.context.selected_objects
     SelectedObjects = FilterSelection(StartSelection)
     context = bpy.context
@@ -42,7 +44,7 @@ def RenderRigidBody():
     ScaleBounds = Vector((0.0, 0.0, 0.0))
     ExtendsMin = np.array([np.inf] * 3)
     ExtendsMax = np.array([np.inf * -1] * 3)
-    CompareLocations, StartScales, StartExtendsMin, StartExtendsMax = PrepareSelectedObjects(SelectedObjects, GetEvaluationFrame())
+    CompareLocations, StartScales, StartRotations, StartExtendsMin, StartExtendsMax = PrepareSelectedObjects(SelectedObjects, GetEvaluationFrame())
 
     # Accumulate the VAT data
     for Frame in range(FrameStart, FrameEnd + 1):
@@ -54,15 +56,24 @@ def RenderRigidBody():
         # Loop over the objects and get their position
         VerticalPixelIndex = floor((Frame - FrameStart) / FrameSpacing)
         for i, Object in enumerate(SelectedObjects):
+            # Temp object
+            DependencyGraph = context.view_layer.depsgraph
+            CompareObject = Object.evaluated_get(DependencyGraph)
+
             # Frame data
-            FrameLocation = ConvertCoordinate(Object.matrix_world.translation) - CompareLocations[i]
-            CurrentScale = ConvertCoordinate(Object.scale, FlipAxes = False)
+            FrameLocation = ConvertCoordinate(CompareObject.matrix_world.translation) - CompareLocations[i]
+            CurrentScale = ConvertCoordinate(CompareObject.matrix_world.to_scale(), FlipAxes = False)
             FrameScale = Vector([CurrentScale[j] / StartScales[i][j] for j in range(3)])
+            CurrentRotation = CompareObject.matrix_world.to_quaternion()
+            Rotation = ConvertQuaternion(CurrentRotation @ StartRotations[i].inverted())
 
             # Create the basic data arrays
-            PixelIndex = VerticalPixelIndex + i
-            PixelPositions[PixelIndex] = (*FrameLocation, 1.0)
-            PixelNormals[PixelIndex] = ConvertQuaternion(Object.rotation_euler.to_quaternion())
+            PixelIndex = VerticalPixelIndex * len(SelectedObjects)+ i
+            PositionAlpha = 1.0
+            if(properties.FileScaleTextureEnabled and properties.FileSingleChannelScaleEnabled):
+                PositionAlpha = FrameScale[0]
+            PixelPositions[PixelIndex] = (*FrameLocation, PositionAlpha)
+            PixelNormals[PixelIndex] = Rotation
             PixelScales[PixelIndex] = (*FrameScale, 1.0)
 
             # Create the bounds data
@@ -87,7 +98,6 @@ def RenderRigidBody():
         CreateTexture(PixelPositions, ObjectCount, FrameCount, properties.FilePositionTexture, properties.FilePositionTextureFormat)
     if(properties.FileRotationTextureEnabled):
         CreateTexture(PixelNormals, ObjectCount, FrameCount, properties.FileRotationTexture, properties.FileRotationTextureFormat)
-        #CreateTexture(PixelNormals, ObjectCount, FrameCount, properties.FileRotationTexture, "32")
     if(properties.FileScaleTextureEnabled and (not properties.FileSingleChannelScaleEnabled)):
         CreateTexture(PixelScales, ObjectCount, FrameCount, properties.FileScaleTexture, properties.FileScaleTextureFormat)
     if(properties.FileJSONDataEnabled):
@@ -98,20 +108,25 @@ def RenderRigidBody():
 def PrepareSelectedObjects(Objects : list[bpy.types.Object], EvaluationFrame : int, bShouldTransform : bool = True):
     context = bpy.context
     scene = context.scene
-    
     StartExtendsMin = np.array([np.inf] * 3)
     StartExtendsMax = np.array([np.inf * -1] * 3)
     CompareLocations = []
     StartScales = []
+    StartRotations = []
+
     for Object in Objects:
         # Create compare meshes
         scene.frame_set(EvaluationFrame)
         DependencyGraph = context.view_layer.depsgraph
         CompareObject = Object.evaluated_get(DependencyGraph)
-        CompareLocation = ConvertCoordinate(CompareObject.matrix_world.translation.copy())
+
+        CompareMatrix = CompareObject.matrix_world.copy()
+        CompareLocation = ConvertCoordinate(CompareMatrix.translation)
         CompareLocations.append(CompareLocation)
-        StartScale = Vector((ConvertCoordinate(CompareObject.scale.copy(), FlipAxes = False)))
+        StartScale = Vector((ConvertCoordinate(CompareObject.matrix_world.to_scale(), FlipAxes = False)))
         StartScales.append(StartScale)
+        StartRotation = CompareMatrix.to_quaternion()
+        StartRotations.append(StartRotation)
 
         # Return extends
         Corners = [Object.matrix_world @ Vector(Corner) for Corner in Object.bound_box]
@@ -119,7 +134,7 @@ def PrepareSelectedObjects(Objects : list[bpy.types.Object], EvaluationFrame : i
             StartExtendsMin = np.minimum(StartExtendsMin, ConvertCoordinate(Corner))
             StartExtendsMax = np.maximum(StartExtendsMax, ConvertCoordinate(Corner))
     
-    return CompareLocations, StartScales, StartExtendsMin, StartExtendsMax
+    return CompareLocations, StartScales, StartRotations, StartExtendsMin, StartExtendsMax
 
 # Bring positions to a range from 0-1 based on the maximum calculated bounds
 def NormalizePositions(Positions, Bounds):
@@ -141,6 +156,7 @@ def CreateJSON(PositionBounds, ScaleBounds, ExtendsMin, ExtendsMax, properties, 
     SimulationData["ExtendsMin"] = ExtendsMin.tolist()
     SimulationData["ExtendsMax"] = ExtendsMax.tolist()
     SimulationData["ObjectCount"] = ObjectCount
+    SimulationData["PackedScale"] = (properties.FileScaleTextureEnabled and properties.FileSingleChannelScaleEnabled)
 
     # Export to JSON file
     TargetDirectory = bpy.path.abspath(properties.OutputDirectory)
@@ -158,24 +174,32 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], StartFrame, FrameCount, Ob
     for i, Object in enumerate(Objects):
         # Create a copy of the object
         NewObject = Object.copy()
-        NewData = GetObjectAtFrame(Object, StartFrame, True)
+        NewData = GetObjectAtFrame(Object, StartFrame, False)
         NewObject.data = NewData
+        TransformMatrix = Object.matrix_world.copy()
+        NewObject.data.transform(TransformMatrix)
+        bpy.context.collection.objects.link(NewObject)
 
         # Create the UV data
         DistanceToTop = 1.0 / FrameCount * 0.5
 
         # Setting the UVs (sample texture UVs)
+        bm = bmesh.new()
+        bm.from_mesh(NewData)
+        bmesh.ops.triangulate(bm, faces = bm.faces[:])
+        bm.to_mesh(NewData)
+        bm.free()
         PixelUVLayer = NewObject.data.uv_layers.new(name = "PixelUVs")
         OriginUVLayer1 = NewObject.data.uv_layers.new(name = "OriginUVs1")
         OriginUVLayer2 = NewObject.data.uv_layers.new(name = "OriginUVs2")
         Vertices = NewObject.data.vertices
-
+        
         for Loop in NewObject.data.loops:
             PixelUVLayer.data[Loop.index].uv = (
                 (i + 0.5) / ObjectCount,
                 1.0 -  DistanceToTop
             )
-            VertexLocation = ConvertCoordinate(Vertices[Loop.vertex_index].co)
+            VertexLocation = ConvertCoordinate(Vertices[Loop.vertex_index].co - Object.matrix_world.translation)
             OriginUVLayer1.data[Loop.index].uv = (
                 VertexLocation[0],
                 1.0
@@ -184,13 +208,11 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], StartFrame, FrameCount, Ob
                 VertexLocation[1],
                 1.0 - VertexLocation[2]
             )
-
-        bpy.context.collection.objects.link(NewObject)
+        
+        NewObject.data.transform(TransformMatrix.inverted())
         NewObjects.append(NewObject)
         NewDatas.append(NewData)
     
-    # Export
-    NewObject.data.transform(Object.matrix_world.inverted())
     ExportWithLODs(NewObjects)
 
     # Remove the objects and meshes after we were done with them
