@@ -22,7 +22,6 @@ from .VATFunctions import (
 # Executing the rigid body VAT render
 def RenderRigidBody(): 
     # Basic vars
-    print("Collecting data")
     StartSelection = bpy.context.selected_objects
     SelectedObjects = FilterSelection(StartSelection)
     context = bpy.context
@@ -68,7 +67,7 @@ def RenderRigidBody():
             Rotation = ConvertQuaternion(CurrentRotation @ StartRotations[i].inverted())
 
             # Create the basic data arrays
-            PixelIndex = VerticalPixelIndex * len(SelectedObjects)+ i
+            PixelIndex = VerticalPixelIndex * len(SelectedObjects) + i
             PositionAlpha = 1.0
             if(properties.FileScaleTextureEnabled and properties.FileSingleChannelScaleEnabled):
                 PositionAlpha = FrameScale[0]
@@ -156,7 +155,8 @@ def CreateJSON(PositionBounds, ScaleBounds, ExtendsMin, ExtendsMax, properties, 
     SimulationData["ExtendsMin"] = ExtendsMin.tolist()
     SimulationData["ExtendsMax"] = ExtendsMax.tolist()
     SimulationData["ObjectCount"] = ObjectCount
-    SimulationData["PackedScale"] = (properties.FileScaleTextureEnabled and properties.FileSingleChannelScaleEnabled)
+    SimulationData["ScaleEnabled"] = 1.0 if properties.FileScaleTextureEnabled else 0.0
+    SimulationData["PackedScale"] = 1.0 if (properties.FileScaleTextureEnabled and properties.FileSingleChannelScaleEnabled) else 0.0
 
     # Export to JSON file
     TargetDirectory = bpy.path.abspath(properties.OutputDirectory)
@@ -282,6 +282,17 @@ def IsDefaultExportValid():
 
     return True, ""
 
+def CheckUVChannels(Objects : list[bpy.types.Object]):
+    bIsExportValid = True
+    Warning = ""
+    for Object in Objects:
+        if(len(Object.data.uv_layers) > 1):
+            bIsExportValid = False
+            Warning = "One or more of the selected objects has too many UV channels"
+            break
+
+    return bIsExportValid, Warning
+
 class VATEXPORTER_OT_RenderRigidBody(Operator):
     bl_idname = "vatexporter.renderrigidbody"
     bl_label = "Render rigidbody sim to VAT"
@@ -305,13 +316,21 @@ class VATEXPORTER_OT_RenderRigidBody(Operator):
     def execute(self, context):
         # Check if we can export. If not, cancel the operation
         bIsExportValid, Warning = IsDefaultExportValid()
-        if(bIsExportValid == False):
+        if(not bIsExportValid):
             self.report({"WARNING"}, Warning)
             return {"CANCELLED"}
         # Check if we can export based on viewport selection
         if(not bpy.context.selected_objects):
             self.report({"WARNING"}, "Nothing is selected")
             return {"CANCELLED"}
+    
+
+        # Check if we can export based on the UV layers in the selected objects
+        bIsExportValid, Warning = CheckUVChannels(bpy.context.selected_objects)
+        if(not bIsExportValid):
+            self.report({"WARNING"}, Warning)
+            return {"CANCELLED"}
+
         RenderRigidBody()
         return {"FINISHED"}
 

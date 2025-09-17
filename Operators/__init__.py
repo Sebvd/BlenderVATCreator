@@ -1,7 +1,8 @@
 from . import (
     RenderSoftBody,
     VATFunctions,
-    RenderRigidBody
+    RenderRigidBody,
+    RenderDynamic
 )
 from importlib import reload
 
