@@ -9,7 +9,7 @@ from importlib import reload
 from . import VATFunctions
 reload(VATFunctions)
 
-modules = [RenderSoftBody, RenderRigidBody]
+modules = [RenderSoftBody, RenderRigidBody, RenderDynamic]
 
 def register():
     for module in modules:

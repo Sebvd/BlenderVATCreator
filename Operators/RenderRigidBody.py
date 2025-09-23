@@ -165,6 +165,7 @@ def CreateJSON(PositionBounds, ScaleBounds, ExtendsMin, ExtendsMax, properties, 
     with open(TargetFile, "w") as File:
         json.dump(SimulationData, File, indent = 2)
 
+# Creates the mesh for exporting
 def CreateVATMeshes(Objects : list[bpy.types.Object], StartFrame, FrameCount, ObjectCount):
     scene = bpy.context.scene
     scene.frame_set(StartFrame)
@@ -189,6 +190,7 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], StartFrame, FrameCount, Ob
         bmesh.ops.triangulate(bm, faces = bm.faces[:])
         bm.to_mesh(NewData)
         bm.free()
+        NewData.update()
         PixelUVLayer = NewObject.data.uv_layers.new(name = "PixelUVs")
         OriginUVLayer1 = NewObject.data.uv_layers.new(name = "OriginUVs1")
         OriginUVLayer2 = NewObject.data.uv_layers.new(name = "OriginUVs2")
@@ -282,6 +284,7 @@ def IsDefaultExportValid():
 
     return True, ""
 
+# Function to check if there are too many UV channels in the source mesh
 def CheckUVChannels(Objects : list[bpy.types.Object]):
     bIsExportValid = True
     Warning = ""

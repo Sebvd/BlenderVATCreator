@@ -49,39 +49,41 @@ class VATEXPORTER_PT_LODs(Panel):
         properties = scene.VATExporter_RegularProperties
 
         # Rest pose frame
-        row = layout.row()
-        row.label(text = "Rest pose")
-        row.prop(properties, "RestPose", text = "")
-        if(properties.RestPose == "CUSTOM"):
+        if(properties.VATType != "FLUID"):
             row = layout.row()
-            row.label(text = "Frame")
-            row.prop(properties, "CustomRestPoseFrame", text = "")
+            row.label(text = "Rest pose")
+            row.prop(properties, "RestPose", text = "")
+            if(properties.RestPose == "CUSTOM"):
+                row = layout.row()
+                row.label(text = "Frame")
+                row.prop(properties, "CustomRestPoseFrame", text = "")
 
         # General mesh settings
-        if(properties.VATType == "SOFTBODY"):
+        if(properties.VATType == "SOFTBODY" or properties.VATType == "FLUID"):
             row = layout.row()
             row.prop(properties, "SplitVertices", text = "Split at hard edges")
 
         # LODs box
-        row = layout.row()
-        row.label(text = "LODs")
-        row = layout.row()
-        split = row.split(factor = 0.85)
-        column = split.column()
-        column.template_list("VATEXPORTER_UL_LODWidget", "LODs", scene, "VATExporter_LODList", scene, "VATExporter_LODIndex")
-
-        # + and - buttons
-        column = split.column()
-        column.operator("vatexporter.addlod", text = "", icon = "ADD")
-        column.operator("vatexporter.removelod", text = "", icon = "REMOVE")
-
-        # Per LOD settings
-        if(scene.VATExporter_LODIndex >= 0 and scene.VATExporter_LODList):
-            LOD = scene.VATExporter_LODList[scene.VATExporter_LODIndex]
-
+        if(properties.VATType != "FLUID" and properties.VATType != "PARTICLE"):
             row = layout.row()
-            row.label(text = "Reduction rate")
-            row.prop(LOD, "ReductionRate", text = "")
+            row.label(text = "LODs")
+            row = layout.row()
+            split = row.split(factor = 0.85)
+            column = split.column()
+            column.template_list("VATEXPORTER_UL_LODWidget", "LODs", scene, "VATExporter_LODList", scene, "VATExporter_LODIndex")
+
+            # + and - buttons
+            column = split.column()
+            column.operator("vatexporter.addlod", text = "", icon = "ADD")
+            column.operator("vatexporter.removelod", text = "", icon = "REMOVE")
+
+            # Per LOD settings
+            if(scene.VATExporter_LODIndex >= 0 and scene.VATExporter_LODList):
+                LOD = scene.VATExporter_LODList[scene.VATExporter_LODIndex]
+
+                row = layout.row()
+                row.label(text = "Reduction rate")
+                row.prop(LOD, "ReductionRate", text = "")
 
 # Button to add a new item to the LOD list
 class VATEXPORTER_OT_AddLOD(Operator):

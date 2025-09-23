@@ -157,16 +157,16 @@ class VATEXPORTER_PG_Properties(PropertyGroup):
         default = "8"
     )
 
-    # Lookup texture settings
-    FileLookUpTexture : StringProperty(
-        name = "File lookup texture name",
-        description = "The target file name for the lookup texture",
+    # Data texture settings
+    FileDataTexture : StringProperty(
+        name = "File data texture name",
+        description = "The target file name for the data texture",
         default = "T_Simulation_VATL",
         subtype = "FILE_NAME"
     )
-    FileLookUpTextureEnabled : BoolProperty(
-        name = "Lookup texture enabled",
-        description = "Whether to export the lookup texture",
+    FileDataTextureEnabled : BoolProperty(
+        name = "Data texture enabled",
+        description = "Whether to export the data texture",
         default = True
     )
 

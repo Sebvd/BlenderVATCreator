@@ -70,16 +70,16 @@ class VATEXPORTER_PT_ExportSettings(Panel):
         row2.label(text = "Format")
         row2.prop(properties, "FileRotationTextureFormat", text = "")
 
-        # Section for the lookup texture
+        # Section for the data texture
         if(properties.VATType == "FLUID"):
             box = layout.box()
             row = box.row()
-            row.prop(properties, "FileLookUpTextureEnabled", text = "File lookup texture")
+            row.prop(properties, "FileDataTextureEnabled", text = "File data texture")
             row = box.row()
-            if(not properties.FileLookUpTextureEnabled):
+            if(not properties.FileDataTextureEnabled):
                 row.enabled = False
-            row.label(text = "Lookup texture name")
-            row.prop(properties, "FileLookUpTexture", text = "")
+            row.label(text = "Data texture name")
+            row.prop(properties, "FileDataTexture", text = "")
 
         # Section for the scale texture
         if(properties.VATType == "RIGIDBODY"):
