@@ -28,12 +28,10 @@ def RenderDynamic():
     TriangulationModifiers = PrepareSelectedObjects(StartSelection)
     FrameCount = ceil((FrameEnd - FrameStart + 1) / FrameSpacing)
     VertexCount, MaxFaces, BoundsMin, BoundsMax, RestPoseFrame = PrePass(StartSelection, FrameStart, FrameEnd, FrameSpacing)
-    TransformTextureSize = GetTextureDimensions(VertexCount)
+    TransformTextureSize = GetTextureDimensions(VertexCount + 1)
 
     # Data pass
     NewObjects, NewDatas = MeshPass(StartSelection, RestPoseFrame, FrameCount, MaxFaces * 3)
-    print(f"From NewDatas: {len(NewDatas[0].vertices)}")
-    print(f"From max faces: {MaxFaces * 3}")
     PixelPositions, PixelNormals, PixelData = DataPass(StartSelection, TransformTextureSize, BoundsMin, BoundsMax, NewDatas, FrameCount, MaxFaces * 3)
     
 
@@ -107,6 +105,8 @@ def DataPass(Objects : list[bpy.types.Object], TextureSize, BoundsMin, BoundsMax
     # Data texture
     DataTextureSize = FrameCount * VertexCount
     PixelData = np.zeros((DataTextureSize, 4))
+    DefaultDataValue = (0.5 / VertexCount, 0.5 / TextureSize[1], 0.0, 1.0)
+    PixelData = np.full((DataTextureSize, 4), DefaultDataValue)
 
     # Write to the texture data
     FrameVertexCount = 0
@@ -128,10 +128,12 @@ def DataPass(Objects : list[bpy.types.Object], TextureSize, BoundsMin, BoundsMax
                 for k, LoopIndex in enumerate(LoopIndices):
                     # Get the data for the pixel positions
                     TargetVertex = CompareVertices[TargetVertices[k]]
-                    TransformArrayPosition = TargetVertices[k] + FrameVertexCount
+                    TransformArrayPosition = TargetVertices[k] + FrameVertexCount + 1
                     TargetPosition = ConvertCoordinate(TargetVertex.co)
+                    TargetNormal = ConvertCoordinate(TargetVertex.normal)
+                    ConvertedNormal = UnsignVector(Vector((TargetNormal[0], TargetNormal[1], TargetNormal[2])))
                     PixelPositions[TransformArrayPosition] = (*GetRelativePosition(TargetPosition, Vector(BoundsMin), Vector(BoundsMax)), 1.0)
-                    PixelNormals[TransformArrayPosition] = (*UnsignVector(TargetVertex.normal), 1.0)
+                    PixelNormals[TransformArrayPosition] = (*ConvertedNormal, 1.0)
 
                     # Write the data for the data texture
                     DataTextureArrayIndex = VerticalPixelIndex + Loops[LoopIndex].vertex_index + LocalVertexCount
@@ -172,7 +174,7 @@ def MeshPass(Objects : list[bpy.types.Object], RestPoseFrame, FrameCount, Vertex
         bpy.context.collection.objects.link(NewObject)
 
         # Separate all the triangles in the mesh
-        Normals = [Loop.normal.copy() for Loop in NewData.loops]
+        Normals = [Vector((0,1,0)) for Loop in NewData.loops]
         bm = bmesh.new()
         bm.from_mesh(NewData)
         bmesh.ops.split_edges(bm, edges = bm.edges)

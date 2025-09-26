@@ -80,6 +80,7 @@ def CreateTexture(Pixels, TextureWidth, TextureHeight, FileName, Format):
     
     # Set the texture settings
     Texture.pixels = Pixels.ravel()
+    Texture.use_half_precision = False
 
     # Export the textures to disk
     properties = bpy.context.scene.VATExporter_RegularProperties
