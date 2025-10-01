@@ -10,39 +10,9 @@ class VATEXPORTER_PT_VATSettings(Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
 
-    # Draw header
-    def draw_header_preset(self, context):
-        layout = self.layout
-        operator = layout.operator("wm.call_menu", 
-                        text = "", 
-                        icon = "PRESET",
-                        emboss = False
-                        )
-        operator.name = "VATEXPORTER_MT_EnginePresets"
-
     # Draw UI
     def draw(self, context):
-        scene = context.scene
-        properties = scene.VATExporter_RegularProperties
-        layout = self.layout
-
-        # Create sliders for maximum texture sizes
-        row = layout.row()
-        split = row.split(factor = 0.4)
-        column = split.column()
-        column.label(text = "Target Coords")
-        column.label(text = "Flip Coords")
-        column.label(text = "Max U")
-        column.label(text = "Max V")
-
-        column = split.column()
-        column.prop(properties, "CoordinateSystem", text = "")
-        row = column.row()
-        row.prop(properties, "FlipX", text = "X")
-        row.prop(properties, "FlipY", text = "Y")
-        row.prop(properties, "FlipZ", text = "Z")
-        column.prop(properties, "ExportResolutionU", text = "")
-        column.prop(properties, "ExportResolutionV", text = "")
+        pass
 
 class VATEXPORTER_PT_ExportSection(Panel):
     # Class variables
@@ -66,8 +36,6 @@ class VATEXPORTER_PT_ExportSection(Panel):
             layout.operator("vatexporter.renderrigidbody", text = "Export")
         elif(properties.VATType == "FLUID"): # Fluid
             layout.operator("vatexporter.renderdynamic", text = "Export")
-        else: # Particles
-            layout.operator("mesh.primitive_cube_add", text = "Export")
 
 class VATEXPORTER_MT_EnginePresets(Menu):
     bl_idname = "VATEXPORTER_MT_EnginePresets"

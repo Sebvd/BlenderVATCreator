@@ -3,11 +3,12 @@ from . import (
     MeshSettings,
     Properties,
     VATSettings,
-    ExportSettings
+    ExportSettings,
+    TextureSettings
 )
 from importlib import reload
 
-modules = [MainMenu, Properties, VATSettings, MeshSettings, ExportSettings]
+modules = [MainMenu, Properties, VATSettings, TextureSettings, MeshSettings, ExportSettings]
 
 def register():
     for module in modules:
