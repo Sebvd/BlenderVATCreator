@@ -11,7 +11,8 @@ from .VATFunctions import (
     FilterSelection,
     UnsignVector,
     CreateTexture,
-    ConvertCoordinate
+    ConvertCoordinate,
+    GetExtends
 )
 
 # Execute the render dynamic operator
@@ -26,9 +27,11 @@ def RenderDynamic():
     FrameSpacing = properties.FrameSpacing
 
     # Prepass: Get the basic data on the simulation and the target textures
-    TriangulationModifiers = PrepareSelectedObjects(StartSelection)
+    Modifiers = PrepareSelectedObjects(StartSelection)
     FrameCount = (FrameEnd - FrameStart + 1)
-    VertexCount, MaxFaces, Bounds, RestPoseFrame, RowCount, DataTextureSize = PrePass(StartSelection, FrameStart, FrameEnd, FrameSpacing)
+
+    # Pass 1: Prepass
+    VertexCount, Bounds, RestPoseFrame, RowCount, DataTextureSize, StartBounds = PrePass(StartSelection, FrameStart, FrameEnd, FrameSpacing)
     TransformTextureSize = GetTextureDimensions(VertexCount + 1)
 
     # Data pass
@@ -43,11 +46,16 @@ def RenderDynamic():
     if(properties.FileDataTextureEnabled):
         CreateTexture(PixelData, DataTextureSize[0], DataTextureSize[1], properties.FileDataTexture, "16")
     if(properties.FileJSONDataEnabled):
-        CreateJSON(Bounds, round(DataTextureSize[1] / RowCount))
+        CreateJSON(
+            (Bounds[0], Bounds[1]), 
+            round(DataTextureSize[1] / RowCount) - 1, 
+            (GetExtends(*Bounds, *StartBounds))
+        )
 
     # Clean up
     for i, Object in enumerate(StartSelection): 
-        Object.modifiers.remove(TriangulationModifiers[i])
+        Object.modifiers.remove(Modifiers[i * 2])
+        Object.modifiers.remove(Modifiers[i * 2 + 1])
 
     for i, NewObject in enumerate(NewObjects):
         bpy.data.objects.remove(NewObject)
@@ -58,10 +66,11 @@ def PrePass(Objects : list[bpy.types.Object], FrameStart, FrameEnd, FrameSpacing
     # Basic data
     BoundsMin = np.array([np.inf] * 3)
     BoundsMax = np.array([np.inf * -1] * 3)
+    StartBoundsMin = BoundsMin.copy()
+    StartBoundsMax = BoundsMax.copy()
     RestPoseFrame = FrameStart
     VertexCount = 0
     MaxFaceCount = 0
-    MaxVertexCount = 0
 
     # Find the vertexcount and facecount across the frame range
     for Frame in range(FrameStart, FrameEnd + 1):
@@ -80,29 +89,37 @@ def PrePass(Objects : list[bpy.types.Object], FrameStart, FrameEnd, FrameSpacing
             LocalVertexCount += len(CompareObject.data.vertices)
 
             # Get the maximum size of the bounding box for each frame
-            Corners = [Vector(Corner) for Corner in CompareObject.bound_box]
+            Corners = [ConvertCoordinate(Vector(Corner) @ Object.matrix_world) for Corner in CompareObject.bound_box]
+            LocalBoundsMin = np.array([np.inf] * 3)
+            LocalBoundsMax = np.array([np.inf * -1] * 3)
             for Corner in Corners:
-                BoundsMin = np.minimum(BoundsMin, Corner)
-                BoundsMax = np.maximum(BoundsMax, Corner)
+                LocalBoundsMin = np.minimum(LocalBoundsMin, Corner)
+                LocalBoundsMax = np.maximum(LocalBoundsMax, Corner)
 
-            if(LocalFaceCount > MaxFaceCount):
-                MaxFaceCount = LocalFaceCount
-                RestPoseFrame = Frame
-            if(LocalVertexCount >  MaxVertexCount):
-                MaxVertexCount = VertexCount
+            BoundsMin = np.minimum(LocalBoundsMin, BoundsMin)
+            BoundsMax = np.maximum(LocalBoundsMax, BoundsMax)
+
+        # Write data from the rest pose frame (which is the frame with the most polys)
+        if(LocalFaceCount > MaxFaceCount):
+            MaxFaceCount = LocalFaceCount
+            RestPoseFrame = Frame
+            StartBoundsMin = LocalBoundsMin
+            StartBoundsMax = LocalBoundsMax
     
     # Update bounds
     Bounds = (BoundsMin, BoundsMax)
+    StartBounds = (StartBoundsMin, StartBoundsMax)
 
     # Calculate data texture size
     properties = bpy.context.scene.VATExporter_RegularProperties
-    MaxDataTextureSize = (properties.DataTextureResolutionU, properties.DataTextureResolutionV)
+    MaxTextureSizeU = properties.DataTextureResolutionU
     FrameCount = FrameEnd - FrameStart + 1
     VATMeshVertexCount = MaxFaceCount * 3
-    RowCount = ceil(VATMeshVertexCount / MaxDataTextureSize[0])
+    RowCount = ceil(VATMeshVertexCount / MaxTextureSizeU)
     DataTextureSize = (ceil(VATMeshVertexCount / RowCount), RowCount * FrameCount)
 
-    return VertexCount, MaxFaceCount, Bounds, RestPoseFrame, RowCount, DataTextureSize
+
+    return VertexCount, Bounds, RestPoseFrame, RowCount, DataTextureSize, StartBounds
 
 # Create VAT meshes
 def MeshPass(Objects : list[bpy.types.Object], RestPoseFrame, FrameCount, DataTextureSize):
@@ -122,8 +139,6 @@ def MeshPass(Objects : list[bpy.types.Object], RestPoseFrame, FrameCount, DataTe
         CompareObject = GetObjectAtFrame(Object, RestPoseFrame)
         NewData = bpy.data.meshes.new_from_object(CompareObject)
         NewObject = bpy.data.objects.new(Object.name, NewData)
-        NewObject.data.transform(Object.matrix_world)
-        print(len(NewObject.data.polygons))
         bpy.context.collection.objects.link(NewObject)
 
         # Separate all the triangles in the mesh
@@ -135,6 +150,11 @@ def MeshPass(Objects : list[bpy.types.Object], RestPoseFrame, FrameCount, DataTe
         bm.free()
         NewData.normals_split_custom_set(Normals)
         NewData.update()
+
+        # Clear the UV channels of this new object
+        UVLayers = NewObject.data.uv_layers
+        for UVLayer in UVLayers:
+            UVLayers.remove(UVLayer)
 
         # Set the UVs & data texture pixels
         PixelUVLayer = NewObject.data.uv_layers.new(name = "PixelUVs")
@@ -159,7 +179,7 @@ def MeshPass(Objects : list[bpy.types.Object], RestPoseFrame, FrameCount, DataTe
     return NewObjects, NewDatas
 
 # Data pass: Creates the position, normal and data textures
-def DataPass(Objects : list[bpy.types.Object], TextureSize, Bounds, NewDatas : list[bpy.types.Mesh], FrameCount, DataTextureSize):
+def DataPass(Objects : list[bpy.types.Object], TextureSize, Bounds, NewDatas : list[bpy.types.Mesh], FrameCount, DataTextureSize):  
     # Position and normal texture data
     TransformTextureSize = TextureSize[0] * TextureSize[1]
     PixelPositions = np.zeros((TransformTextureSize, 4))
@@ -181,36 +201,49 @@ def DataPass(Objects : list[bpy.types.Object], TextureSize, Bounds, NewDatas : l
         VerticalPixelIndex = DataTextureSize[0] * (Frame - FrameStart)
         for i, NewData in enumerate(NewDatas):
             CompareObject = GetObjectAtFrame(Objects[i], Frame)
+            UVLayer = CompareObject.data.uv_layers.active
             CompareVertices = CompareObject.data.vertices
             Polygons = NewData.polygons
             Loops = NewData.loops
+            TargetLoops = CompareObject.data.loops
             for Polygon in Polygons:
                 if(Polygon.index >= len(CompareObject.data.polygons)):
                     continue
                 TargetPolygon = CompareObject.data.polygons[Polygon.index]
-                TargetVertices = TargetPolygon.vertices
+                PolygonLoops = TargetPolygon.loop_indices
                 LoopIndices = Polygon.loop_indices
                 for k, LoopIndex in enumerate(LoopIndices):
                     # Get the data for the pixel positions
-                    TargetVertex = CompareVertices[TargetVertices[k]]
-                    TransformArrayPosition = TargetVertices[k] + FrameVertexCount + 1
+                    TargetLoop = TargetLoops[PolygonLoops[k]]
+                    VertexIndex = TargetLoop.vertex_index
+                    TargetVertex = CompareVertices[VertexIndex]
+                    TransformArrayPosition = VertexIndex + FrameVertexCount + 1
                     TargetPosition = TargetVertex.co
                     TargetNormal = ConvertCoordinate(TargetVertex.normal)
                     ConvertedNormal = UnsignVector(Vector((TargetNormal[0], TargetNormal[1], TargetNormal[2])))
-                    PixelPositions[TransformArrayPosition] = (*GetRelativePosition(TargetPosition, Vector(BoundsMin), Vector(BoundsMax)), 1.0)
+                    ConvertedPosition = ConvertCoordinate(TargetPosition)
+                    PixelPositions[TransformArrayPosition] = (*GetRelativePosition(ConvertedPosition, Vector(BoundsMin), Vector(BoundsMax)), 1.0)
                     PixelNormals[TransformArrayPosition] = (*ConvertedNormal, 1.0)
 
                     # Write the data for the data texture
+                    # UV data of transform textures
                     CurrentRow = floor((Loops[LoopIndex].vertex_index + LocalVertexCount) / DataTextureSize[0])
                     Remainder = (Loops[LoopIndex].vertex_index + LocalVertexCount ) % DataTextureSize[0]
                     DataTextureArrayIndex = CurrentRow * DataTextureSize[0] * FrameCount + Remainder + VerticalPixelIndex
+                    # UV data of source mesh
+                    Coordinates = (0.0, 0.0)
+                    if(UVLayer != None):
+                        Coordinates = UVLayer.data[TargetLoop.index].uv
+                        Coordinates[0] = max(0.0, min(1.0, Coordinates[0]))
+                        Coordinates[1] = max(0.0, min(1.0, Coordinates[1]))
                     UVPixel = (
                         (((TransformArrayPosition) % TextureSize[0]) + 0.5) / TextureSize[0],
                         (floor(TransformArrayPosition / TextureSize[0]) + 0.5) / TextureSize[1],
-                        0.0,
-                        1.0
+                        Coordinates[0],
+                        Coordinates[1]
                     )
                     PixelData[DataTextureArrayIndex] = UVPixel
+
 
             FrameVertexCount += len(CompareVertices)
             LocalVertexCount += len(CompareVertices)
@@ -245,7 +278,7 @@ def ExportVATMesh(Objects : list[bpy.types.Object]):
 
 
 # Create the JSON data used by the shader
-def CreateJSON(Bounds : tuple[Vector, Vector], RowHeight):
+def CreateJSON(Bounds : tuple[Vector, Vector], RowHeight, Extends):
     # Create the JSON dict
     properties = bpy.context.scene.VATExporter_RegularProperties
     SimulationData = dict()
@@ -253,6 +286,8 @@ def CreateJSON(Bounds : tuple[Vector, Vector], RowHeight):
     SimulationData["BoundsMin"] = list(Bounds[0])
     SimulationData["BoundsMax"] = list(Bounds[1])
     SimulationData["RowHeight"] = RowHeight
+    SimulationData["ExtendsMin"] = list(Extends[0])
+    SimulationData["Extendsmax"] = list(Extends[1])
 
     # Export the JSON
     TargetDirectory = bpy.path.abspath(properties.OutputDirectory)
@@ -263,12 +298,24 @@ def CreateJSON(Bounds : tuple[Vector, Vector], RowHeight):
 
 # Append triangulation modifiers
 def PrepareSelectedObjects(Objects : list[bpy.types.Object]):
-    TriangulationModifiers = []
+    properties = bpy.context.scene.VATExporter_RegularProperties
+    Modifiers = []
+    bShouldSplitVertices = properties.SplitVertices
     for Object in Objects:
-        TriangulateModifier = Object.modifiers.new("Triangulate", "TRIANGULATE")
-        TriangulationModifiers.append(TriangulateModifier)
+        # Unlock modifiers (The next modifiers must be at the end of the stack)
+        ExistingModifiers = Object.modifiers
+        for ExistingModifier in ExistingModifiers:
+            ExistingModifier.use_pin_to_last = False
 
-    return TriangulationModifiers
+        # Assign new modifiers
+        TriangulateModifier = Object.modifiers.new("Triangulate", "TRIANGULATE")
+        EdgeSplitModifier : bpy.types.EdgeSplitModifier = Object.modifiers.new("EdgeSplit", "EDGE_SPLIT")
+        EdgeSplitModifier.use_edge_angle = False
+        EdgeSplitModifier.use_edge_sharp = bShouldSplitVertices
+        Modifiers.append(TriangulateModifier)
+        Modifiers.append(EdgeSplitModifier)
+
+    return Modifiers
 
 # Getting object data at a certain frame
 def GetObjectAtFrame(Object : bpy.types.Object, Frame : int) -> bpy.types.Object:
@@ -288,30 +335,20 @@ def GetRelativePosition(Position : Vector, BoundsMin : Vector, BoundsMax : Vecto
     OriginPosition = Position - BoundsMin
     BoundsSize = BoundsMax - BoundsMin
     RelativePosition = Vector([OriginPosition[i] / BoundsSize[i] for i in range(3)])
-    RelativePosition = ConvertRelativeCoordinate(RelativePosition)
 
     return RelativePosition
 
 # Get the texture dimensions
-def GetTextureDimensions(VertexCount : int):
+def GetTextureDimensions(VertexCount : int) -> tuple:
+    # Initialize required data
     properties = bpy.context.scene.VATExporter_RegularProperties
-    MaxSize = properties.ExportResolutionU
-    Rows = ceil(VertexCount / MaxSize)
-    return (ceil(VertexCount / Rows), Rows)
+    MaxSizeU = properties.ExportResolutionU
 
-# Convert relative position coordinate
-def ConvertRelativeCoordinate(Position : Vector) -> Vector:
-    properties = bpy.context.scene.VATExporter_RegularProperties
-    NewCoordinate = ConvertCoordinate(Position, FlipAxes = False)
+    # Calculate transform texture size
+    Rows = ceil(VertexCount / MaxSizeU)
+    TransformTextureSize = (ceil(VertexCount / Rows), Rows)
 
-    if(properties.FlipX):
-        NewCoordinate[0] = 1 - NewCoordinate[0]
-    elif(properties.FlipY):
-        NewCoordinate[1] = 1 - NewCoordinate[1]
-    elif(properties.FlipZ):
-        NewCoordinate[2] = 1 - NewCoordinate[2]
-
-    return NewCoordinate
+    return TransformTextureSize
 
 class VATEXPORTER_OT_RenderDynamic(Operator):
     bl_idname = "vatexporter.renderdynamic"

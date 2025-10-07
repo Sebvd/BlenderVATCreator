@@ -61,27 +61,11 @@ class VATEXPORTER_PG_Properties(PropertyGroup):
         soft_max = 4096,
         default = 4096 
     )
-    ExportResolutionV : IntProperty(
-        name = "Max size V",
-        description = "The maximum size of the produced texture(s) alongside the V coordinate",
-        min = 1,
-        soft_min = 1,
-        soft_max = 4096,
-        default = 4096 
-    )
 
     # Advanced texture settings
     DataTextureResolutionU : IntProperty(
         name = "Max data size U",
         description = "The maximum size of the data texture alongside the U axis",
-        min = 1,
-        soft_min = 1,
-        soft_max = 4096,
-        default = 4096
-    )
-    DataTextureResolutionV : IntProperty(
-        name = "Max data size V",
-        description = "The maximum size of the data texture alongside the V axis",
         min = 1,
         soft_min = 1,
         soft_max = 4096,

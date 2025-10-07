@@ -19,7 +19,7 @@ class VATEXPORTER_PT_TextureSettings(Panel):
                                    )
         operator.name = "VATEXPORTER_MT_EnginePresets"
 
-    # Draw UI
+    # Draw body
     def draw(self, context):
         scene = context.scene
         properties = scene.VATExporter_RegularProperties
@@ -32,7 +32,6 @@ class VATEXPORTER_PT_TextureSettings(Panel):
         column.label(text = "Target Coords")
         column.label(text = "Flip Coords")
         column.label(text = "Max U")
-        column.label(text = "Max V")
 
         column = split.column()
         column.prop(properties, "CoordinateSystem", text = "")
@@ -41,7 +40,6 @@ class VATEXPORTER_PT_TextureSettings(Panel):
         row.prop(properties, "FlipY", text = "Y")
         row.prop(properties, "FlipZ", text = "Z")
         column.prop(properties, "ExportResolutionU", text = "")
-        column.prop(properties, "ExportResolutionV", text = "")
 
         # Advanced settings
         row = layout.row()
@@ -54,10 +52,8 @@ class VATEXPORTER_PT_TextureSettings(Panel):
             split = row.split(factor = 0.4)
             column = split.column()
             column.label(text = "Max U (Data)")
-            column.label(text = "Max V (Data)")
             column = split.column()
             column.prop(properties, "DataTextureResolutionU", text = "")
-            column.prop(properties, "DataTextureResolutionV", text = "")
 
         # Padding settings
         if(properties.VATType != "FLUID"):
