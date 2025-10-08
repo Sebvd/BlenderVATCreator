@@ -34,9 +34,10 @@ def RenderRigidBody():
     # Texture data
     ObjectCount = len(SelectedObjects)
     FrameCount = ceil((FrameEnd - FrameStart + 1) / FrameSpacing)
-    TextureArraySize = ObjectCount * FrameCount
-    PixelPositions = np.ones((TextureArraySize, 4))
-    PixelNormals = np.ones((TextureArraySize, 4))
+    TextureDimensions = GetTextureDimensions(ObjectCount, FrameCount)
+    TextureArraySize = TextureDimensions[0] * TextureDimensions[1]
+    PixelPositions = np.full((TextureArraySize, 4), [0.0, 0.0, 0.0, 1.0])
+    PixelNormals = np.full((TextureArraySize, 4), [0.0, 0.0, 0.0, 1.0])
     PixelScales = np.ones((TextureArraySize, 4))
 
     PositionBounds = Vector((0.0, 0.0, 0.0))
@@ -53,7 +54,8 @@ def RenderRigidBody():
             continue
 
         # Loop over the objects and get their position
-        VerticalPixelIndex = floor((Frame - FrameStart) / FrameSpacing)
+        FrameIndex = floor((Frame - FrameStart) / FrameSpacing)
+        VerticalPixelIndex = FrameIndex * TextureDimensions[0]
         for i, Object in enumerate(SelectedObjects):
             # Temp object
             DependencyGraph = context.view_layer.depsgraph
@@ -67,7 +69,9 @@ def RenderRigidBody():
             Rotation = ConvertQuaternion(CurrentRotation @ StartRotations[i].inverted())
 
             # Create the basic data arrays
-            PixelIndex = VerticalPixelIndex * len(SelectedObjects) + i
+            CurrentRow = floor(i / TextureDimensions[0])
+            Remainder = i % TextureDimensions[0]
+            PixelIndex = CurrentRow * FrameCount * TextureDimensions[0] + Remainder + VerticalPixelIndex
             PositionAlpha = 1.0
             if(properties.FileScaleTextureEnabled and properties.FileSingleChannelScaleEnabled):
                 PositionAlpha = FrameScale[0]
@@ -92,16 +96,24 @@ def RenderRigidBody():
 
     # Create exports
     if(properties.FileMeshEnabled):
-        CreateVATMeshes(SelectedObjects, FrameStart, FrameCount, ObjectCount)
+        CreateVATMeshes(SelectedObjects, FrameStart, TextureDimensions, FrameCount)
     if(properties.FilePositionTextureEnabled):
-        CreateTexture(PixelPositions, ObjectCount, FrameCount, properties.FilePositionTexture, properties.FilePositionTextureFormat)
+        CreateTexture(PixelPositions, TextureDimensions[0], TextureDimensions[1], properties.FilePositionTexture, properties.FilePositionTextureFormat)
     if(properties.FileRotationTextureEnabled):
-        CreateTexture(PixelNormals, ObjectCount, FrameCount, properties.FileRotationTexture, properties.FileRotationTextureFormat)
+        CreateTexture(PixelNormals, TextureDimensions[0], TextureDimensions[1], properties.FileRotationTexture, properties.FileRotationTextureFormat)
     if(properties.FileScaleTextureEnabled and (not properties.FileSingleChannelScaleEnabled)):
-        CreateTexture(PixelScales, ObjectCount, FrameCount, properties.FileScaleTexture, properties.FileScaleTextureFormat)
+        CreateTexture(PixelScales, TextureDimensions[0], TextureDimensions[1], properties.FileScaleTexture, properties.FileScaleTextureFormat)
     if(properties.FileJSONDataEnabled):
         OutputExtendsMin, OutputExtendsMax = GetExtends(ExtendsMin, ExtendsMax, StartExtendsMin, StartExtendsMax)
-        CreateJSON(PositionBounds, ScaleBounds, OutputExtendsMin, OutputExtendsMax, properties, ObjectCount)
+        CreateJSON(
+            PositionBounds, 
+            ScaleBounds, 
+            OutputExtendsMin, 
+            OutputExtendsMax, 
+            properties,
+            TextureDimensions[0],
+            FrameCount - 1
+            )
 
 # Prepare the objects at the evaluation frame
 def PrepareSelectedObjects(Objects : list[bpy.types.Object], EvaluationFrame : int, bShouldTransform : bool = True):
@@ -146,15 +158,17 @@ def NormalizePositions(Positions, Bounds):
     return NormalizedPositions
 
 # Create the JSON file for rigid body sims
-def CreateJSON(PositionBounds, ScaleBounds, ExtendsMin, ExtendsMax, properties, ObjectCount):
+def CreateJSON(PositionBounds, ScaleBounds, ExtendsMin, ExtendsMax, properties, PixelCountU, RowHeight):
     # Create the dict
     SimulationData = dict()
+    SimulationData["Type"] = "RIGID"
     SimulationData["FPS"] = bpy.context.scene.render.fps
+    SimulationData["PixelCountU"] = PixelCountU
+    SimulationData["RowHeight"] = RowHeight
     SimulationData["PositionBounds"] = PositionBounds
     SimulationData["ScaleBounds"] = ScaleBounds
     SimulationData["ExtendsMin"] = ExtendsMin.tolist()
     SimulationData["ExtendsMax"] = ExtendsMax.tolist()
-    SimulationData["ObjectCount"] = ObjectCount
     SimulationData["ScaleEnabled"] = 1.0 if properties.FileScaleTextureEnabled else 0.0
     SimulationData["PackedScale"] = 1.0 if (properties.FileScaleTextureEnabled and properties.FileSingleChannelScaleEnabled) else 0.0
 
@@ -166,7 +180,7 @@ def CreateJSON(PositionBounds, ScaleBounds, ExtendsMin, ExtendsMax, properties, 
         json.dump(SimulationData, File, indent = 2)
 
 # Creates the mesh for exporting
-def CreateVATMeshes(Objects : list[bpy.types.Object], StartFrame, FrameCount, ObjectCount):
+def CreateVATMeshes(Objects : list[bpy.types.Object], StartFrame, TextureDimensions, FrameCount):
     scene = bpy.context.scene
     scene.frame_set(StartFrame)
     bpy.ops.Object.select_all(action = "DESELECT")
@@ -181,8 +195,6 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], StartFrame, FrameCount, Ob
         NewObject.data.transform(TransformMatrix)
         bpy.context.collection.objects.link(NewObject)
 
-        # Create the UV data
-        DistanceToTop = 1.0 / FrameCount * 0.5
 
         # Setting the UVs (sample texture UVs)
         bm = bmesh.new()
@@ -195,12 +207,16 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], StartFrame, FrameCount, Ob
         OriginUVLayer1 = NewObject.data.uv_layers.new(name = "OriginUVs1")
         OriginUVLayer2 = NewObject.data.uv_layers.new(name = "OriginUVs2")
         Vertices = NewObject.data.vertices
-        
+
+        # Write UV data
+        CurrentRow = floor(i / TextureDimensions[0])
+        Remainder = i % TextureDimensions[0]
         for Loop in NewObject.data.loops:
-            PixelUVLayer.data[Loop.index].uv = (
-                (i + 0.5) / ObjectCount,
-                1.0 -  DistanceToTop
+            Coordinate = (
+                (Remainder + 0.5) / TextureDimensions[0],
+                (CurrentRow * FrameCount + 0.5) / TextureDimensions[1]
             )
+            PixelUVLayer.data[Loop.index].uv = Coordinate
             VertexLocation = ConvertCoordinate(Vertices[Loop.vertex_index].co - Object.matrix_world.translation)
             OriginUVLayer1.data[Loop.index].uv = (
                 VertexLocation[0],
@@ -239,6 +255,14 @@ def GetObjectAtFrame(Object : bpy.types.Object, Frame, bShouldTransform : bool =
 
     # Return
     return TemporaryObject
+
+# Calculates the texture dimensions based on the user's settings
+def GetTextureDimensions(PixelCountU : int, FrameCount : int):
+    properties = bpy.context.scene.VATExporter_RegularProperties
+    MaxSizeU = properties.ExportResolutionU
+    Rows = ceil(PixelCountU / MaxSizeU)
+    TextureDimensions = (ceil(PixelCountU / Rows), FrameCount * Rows)
+    return TextureDimensions
 
 # Check if the export data is valid
 def IsDefaultExportValid():
@@ -305,7 +329,6 @@ class VATEXPORTER_OT_RenderRigidBody(Operator):
     @classmethod
     def poll(cls, context):
         # Check based on object selection
-        bHasActiveObject = context.active_object != None
         bIsObjectMode = context.mode == "OBJECT"
 
         # Check based on user settings
@@ -313,7 +336,7 @@ class VATEXPORTER_OT_RenderRigidBody(Operator):
         bIsExporting = properties.FileMeshEnabled or properties.FileJSONDataEnabled or properties.FilePositionTextureEnabled or properties.FileRotationTextureEnabled or properties.FileScaleTextureEnabled
 
         # Return poll
-        return bHasActiveObject and bIsObjectMode and bIsExporting
+        return bIsObjectMode and bIsExporting
     
     # Run the function
     def execute(self, context):

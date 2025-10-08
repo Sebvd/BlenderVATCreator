@@ -71,12 +71,6 @@ class VATEXPORTER_PG_Properties(PropertyGroup):
         soft_max = 4096,
         default = 4096
     )
-    TexturePaddingEnabled : BoolProperty(
-        name = "Enable texture padding",
-        description = "Enable padding in the texture between UV rows",
-        default = False
-    )
-
     # Settings for export coordinate system
     CoordinateSystem : EnumProperty(
         name = "Coordinate system",

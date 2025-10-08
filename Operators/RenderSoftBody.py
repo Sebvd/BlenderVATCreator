@@ -34,13 +34,14 @@ def RenderSoftbodyVAT():
     # Prepare selected objects
     EvaluationFrame = GetEvaluationFrame()
     EdgeSplitModifiers, VertexCount, StartVertices, CompareMeshes, StartExtendsMin, StartExtendsMax = PrepareSelectedObjects(SelectedObjects, EvaluationFrame)
-    FrameCount = min(ceil((FrameEnd - FrameStart + 1) / FrameSpacing), properties.ExportResolutionV)
-    VertexCount = min(VertexCount, properties.ExportResolutionU)
+    FrameCount = ceil((FrameEnd - FrameStart + 1) / FrameSpacing)
+    
     
     # Initialize export data
-    TextureArraySize = VertexCount * FrameCount
-    PixelPositions = np.ones((TextureArraySize, 4))
-    PixelNormals = np.ones((TextureArraySize, 4))
+    TextureDimensions = GetTextureDimensions(VertexCount, FrameCount)
+    TextureArraySize = TextureDimensions[0] * TextureDimensions[1]
+    PixelPositions = np.full((TextureArraySize, 4), [0.0, 0.0, 0.0, 1.0])
+    PixelNormals = np.full((TextureArraySize, 4), [0.0, 0.0, 0.0, 1.0])
     Bounds = Vector((0.0, 0.0, 0.0))
     ExtendsMin = np.array([np.inf] * 3)
     ExtendsMax = np.array([np.inf * -1] * 3)
@@ -53,36 +54,37 @@ def RenderSoftbodyVAT():
             bpy.context.scene.frame_set(Frame)
             continue
 
-        # Check if we are exceeding the maximum number of frames
-        VerticalPixelIndex = floor((Frame - FrameStart) / FrameSpacing)
-        if(VerticalPixelIndex >= FrameCount):
-            break
-
         # Start writing to frame
-        FrameArrayPosition = VerticalPixelIndex * VertexCount
+        FrameIndex = floor((Frame - FrameStart) / FrameSpacing)
+        VerticalPixelIndex = FrameIndex * TextureDimensions[0]
         FrameVertexCount = 0
         for SelectedObject in SelectedObjects:   
             # Get data from the frame
-            FramePositions, FrameNormals, FrameBounds, bCaughtVATError = GetObjectDataAtFrame(
-                SelectedObject, Frame, StartVertices, FrameVertexCount, ExtendsMin, ExtendsMax)
-            ObjectVertexCount = len(FramePositions)
+            CompareMesh = GetMeshAtFrame(SelectedObject, Frame)
+            Vertices = CompareMesh.vertices
 
-            # Insert data into array
-            RestSpace = min(ObjectVertexCount, max(0, VertexCount - FrameVertexCount))
-            FramePositions = np.resize(FramePositions, (RestSpace, 4))
-            FrameNormals = np.resize(FrameNormals, (RestSpace, 4))
-            InsertLocationStart = FrameArrayPosition + FrameVertexCount
-            InsertLocationEnd = InsertLocationStart + RestSpace
-            PixelPositions[InsertLocationStart:InsertLocationEnd, :] = FramePositions
-            PixelNormals[InsertLocationStart:InsertLocationEnd, :] = FrameNormals
+            # Create vertex offset and normals data
+            for Vertex in Vertices:
+                # Get the vertex data
+                CompareVertex = StartVertices[FrameVertexCount + Vertex.index]
+                VertexOffset = ConvertCoordinate(Vertex.co - CompareVertex.co)
+                VertexNormal = UnsignVector(ConvertCoordinate(Vertex.normal.copy()))
+                
+                # Write the vertex data to the array
+                CurrentRow = floor((FrameVertexCount + Vertex.index) / TextureDimensions[0])
+                Remainder = (FrameVertexCount +  Vertex.index) % TextureDimensions[0]
+                TextureArrayIndex = CurrentRow * TextureDimensions[0] * FrameCount + Remainder + VerticalPixelIndex
+                PixelPositions[TextureArrayIndex] = (*VertexOffset, 1.0)
+                PixelNormals[TextureArrayIndex] = (*VertexNormal, 1.0)
+            
+            ObjectVertexCount = len(Vertices)
+            bpy.data.meshes.remove(CompareMesh)
 
             # Update bounds
-            CompareBounds(Bounds, FrameBounds)
+            CompareBounds(Bounds, VertexOffset)
 
             # Update local array position
             FrameVertexCount += ObjectVertexCount
-            if(FrameVertexCount > VertexCount):
-                break
         
         # Check if the vertex count decreases this frame
         if(Frame != FrameStart and FrameVertexCount != PrevFrameVertexCount):
@@ -103,18 +105,25 @@ def RenderSoftbodyVAT():
 
     # Create the export data
     if(properties.FileMeshEnabled):
-        CreateVATMeshes(SelectedObjects, VertexCount, FrameCount, FrameStart)
+        CreateVATMeshes(SelectedObjects, TextureDimensions, FrameCount, FrameStart)
     if(properties.FilePositionTextureEnabled):
-        CreateTexture(PixelPositions, VertexCount, FrameCount, properties.FilePositionTexture, properties.FilePositionTextureFormat)
+        CreateTexture(PixelPositions, TextureDimensions[0], TextureDimensions[1], properties.FilePositionTexture, properties.FilePositionTextureFormat)
     if(properties.FileRotationTextureEnabled):
-        CreateTexture(PixelNormals, VertexCount, FrameCount, properties.FileRotationTexture, properties.FileRotationTextureFormat)
+        CreateTexture(PixelNormals, TextureDimensions[0], TextureDimensions[1], properties.FileRotationTexture, properties.FileRotationTextureFormat)
     if(properties.FileJSONDataEnabled):
         OutputExtendsMin, OutputExtendsMax = GetExtends(ExtendsMin, ExtendsMax, StartExtendsMin, StartExtendsMax)
-        CreateJSON(Bounds, OutputExtendsMin, OutputExtendsMax, properties, VertexCount)
+        CreateJSON(Bounds, 
+                   OutputExtendsMin, 
+                   OutputExtendsMax, 
+                   properties, 
+                   TextureDimensions[0], 
+                   FrameCount - 1
+                   )
 
     # Reset selected objects to their original state
     for CompareMesh in CompareMeshes:
         bpy.data.meshes.remove(CompareMesh)
+        pass
 
     RemoveEdgeSplit(SelectedObjects, EdgeSplitModifiers)
     bpy.context.scene.frame_set(FrameStart)
@@ -133,15 +142,23 @@ def PrepareSelectedObjects(Objects : list[bpy.types.Object], EvaluationFrame : i
     CompareMeshes = []
     StartExtendsMin = np.array([np.inf] * 3)
     StartExtendsMax = np.array([np.inf * -1] * 3)
+
+    properties = bpy.context.scene.VATExporter_RegularProperties
+    bShouldSplitVertices = properties.SplitVertices
     for Object in Objects:
+        # Unlock existing modifiers
+        ExistingModifiers = Object.modifiers
+        for ExistingModifier in ExistingModifiers:
+            ExistingModifier.use_pin_to_last = False
+
         # Assign an edge split modifier is the toggle for sharp edges has been enabled
         EdgeSplitModifier = Object.modifiers.new("EdgeSplit", "EDGE_SPLIT")
         EdgeSplitModifier.use_edge_angle = False
-        EdgeSplitModifier.use_edge_sharp = True
+        EdgeSplitModifier.use_edge_sharp = bShouldSplitVertices
         EdgeSplitModifiers.append(EdgeSplitModifier)
 
         # Calculate vertex data
-        CompareMesh = GetObjectAtFrame(Object, EvaluationFrame)
+        CompareMesh = GetMeshAtFrame(Object, EvaluationFrame)
         Vertices += CompareMesh.vertices
         
         VertexCount += len(CompareMesh.vertices)
@@ -162,7 +179,7 @@ def RemoveEdgeSplit(Objects : list[bpy.types.Object], EdgeSplitModifiers):
         Object.modifiers.remove(EdgeSplitModifiers[i])
 
 # Get the object data at a certain frame
-def GetObjectAtFrame(Object : bpy.types.Object, Frame, bShouldTransform : bool = True):
+def GetMeshAtFrame(Object : bpy.types.Object, Frame, bShouldTransform : bool = True):
     # Base variables
     context = bpy.context
     scene = context.scene
@@ -178,40 +195,6 @@ def GetObjectAtFrame(Object : bpy.types.Object, Frame, bShouldTransform : bool =
     # Return
     return TemporaryObject
 
-# Get positions (as offsets) and normals from the given object at the given frame for all its vertices
-def GetObjectDataAtFrame(Object : bpy.types.Object, Frame, CompareVertices, TotalVertexCount, ExtendsMin, ExtendsMax):
-    # Get object data
-    CompareMesh = GetObjectAtFrame(Object, Frame)
-    Vertices = CompareMesh.vertices
-    Positions = np.ones((len(Vertices), 4))
-    Normals = np.ones((len(Vertices), 4))
-    Bounds = Vector((0.0, 0.0, 0.0))
-
-    # Check if the polycount increases this frame
-    if(TotalVertexCount + len(Vertices) > len(CompareVertices)):
-        return Positions, Normals, Bounds, True
-
-    # Create vertex offsets and normals data
-    for Vertex in Vertices:
-        # Position calculation
-        CompareVertex = CompareVertices[TotalVertexCount + Vertex.index].co
-        Offset = ConvertCoordinate(Vertex.co - CompareVertex)
-        ConvertedOffset = (*Offset, 1.0)
-        Positions[Vertex.index] = ConvertedOffset
-
-        # Create new bounds & extents
-        CompareBounds(Bounds, ConvertedOffset)
-        np.minimum(Vertex.co[:], ExtendsMin, ExtendsMin)
-        np.maximum(Vertex.co[:], ExtendsMax, ExtendsMax)
-
-        # Normal calculation
-        VertexNormal = ConvertCoordinate(Vertex.normal.copy())
-        ConvertedNormal = UnsignVector(Vector((VertexNormal[0], VertexNormal[1], VertexNormal[2])))
-        Normals[Vertex.index] = (*ConvertedNormal, 1.0)
-
-    bpy.data.meshes.remove(CompareMesh)
-    return Positions, Normals, Bounds, False
-
 # Bring positions to a range from 0-1 based on the maximum calculated bounds
 def NormalizePositions(Positions, Bounds):
     # Set the bounds to a minimum of 0.01 to prevent divisions by 0 in the shader
@@ -226,7 +209,7 @@ def NormalizePositions(Positions, Bounds):
     return NormalizedPositions, MeasureBounds
 
 # Create VAT mesh andd export it
-def CreateVATMeshes(Objects : list[bpy.types.Object], VertexCount, FrameCount, StartFrame):
+def CreateVATMeshes(Objects : list[bpy.types.Object], TextureDimensions, FrameCount, StartFrame):
     scene = bpy.context.scene
     scene.frame_set(StartFrame)
     LocalVertexCount = 0
@@ -236,7 +219,7 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], VertexCount, FrameCount, S
     for Object in Objects:
         # Create a copy
         NewObject = Object.copy()
-        NewData = GetObjectAtFrame(Object, StartFrame, False)
+        NewData = GetMeshAtFrame(Object, StartFrame, False)
         NewObject.data = NewData
 
         # Apply the modifiers for each object (e.g., subsurf modifer can cause UV issues)
@@ -246,16 +229,16 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], VertexCount, FrameCount, S
             bpy.context.view_layer.objects.active = NewObject
             bpy.ops.object.modifier_apply(modifier = Modifier.name)
         bpy.context.collection.objects.unlink(NewObject)
-
-        # UV data
-        DistanceToTop = 1.0 / FrameCount * 0.5 # Make sure that the UV is exactly in the middle of the pixel in the v axis
-
-        # Setting the UVs
+        
+        # Create the mesh UVs
         PixelUVLayer = NewObject.data.uv_layers.new(name = "PixelUVs")
         for Loop in NewObject.data.loops:
+            CurrentRow = floor((LocalVertexCount + Loop.vertex_index) / TextureDimensions[0])
+            Remainder = (LocalVertexCount + Loop.vertex_index) % TextureDimensions[0]
+
             PixelUVLayer.data[Loop.index].uv = (
-                min((Loop.vertex_index + LocalVertexCount + 0.5), VertexCount - 0.5) / VertexCount, 
-                1.0 - DistanceToTop
+                (Remainder + 0.5) / TextureDimensions[0], 
+                (CurrentRow * FrameCount + 0.5) / TextureDimensions[1]
             )
 
         # Link the object to the scene
@@ -274,14 +257,16 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], VertexCount, FrameCount, S
         bpy.data.meshes.remove(NewDatas[i])
 
 # Creates the JSON file containing the VAT data
-def CreateJSON(Bounds, ExtendsMin, ExtendsMax, properties, VertexCount):
+def CreateJSON(Bounds, ExtendsMin, ExtendsMax, properties, PixelCountU, RowHeight):
     # Create JSON dict
     SimulationData = dict()
+    SimulationData["Type"] = "SOFTBODY"
     SimulationData["FPS"] = bpy.context.scene.render.fps
+    SimulationData["PixelCountU"] = PixelCountU
     SimulationData["Bounds"] = Bounds
+    SimulationData["RowHeight"] = RowHeight
     SimulationData["ExtendsMin"] = ExtendsMin.tolist()
     SimulationData["ExtendsMax"] = ExtendsMax.tolist()
-    SimulationData["VertexCount"] = VertexCount
 
     # Export the JSPON
     TargetDirectory = bpy.path.abspath(properties.OutputDirectory)
@@ -289,6 +274,15 @@ def CreateJSON(Bounds, ExtendsMin, ExtendsMax, properties, VertexCount):
     TargetFile = os.path.join(TargetDirectory, FileName + ".json")
     with open(TargetFile, "w") as File:
         json.dump(SimulationData, File, indent = 2)
+
+# Calculates the texture dimensions based on the user's settings
+def GetTextureDimensions(PixelCountU : int, FrameCount : int):
+    properties = bpy.context.scene.VATExporter_RegularProperties
+    MaxSizeU = properties.ExportResolutionU
+    Rows = ceil(PixelCountU / MaxSizeU)
+    TextureDimensions = (ceil(PixelCountU / Rows), FrameCount * Rows)
+    return TextureDimensions
+
 
 # Check if the export data is valid
 def IsDefaultExportValid():

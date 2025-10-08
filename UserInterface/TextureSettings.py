@@ -40,26 +40,15 @@ class VATEXPORTER_PT_TextureSettings(Panel):
         row.prop(properties, "FlipY", text = "Y")
         row.prop(properties, "FlipZ", text = "Z")
         column.prop(properties, "ExportResolutionU", text = "")
-
-        # Advanced settings
-        row = layout.row()
-        row.label(text = "Advanced settings")
-        box = layout.box()
         
-        # Data texture settings
+        # Advanced settings
         if(properties.VATType == "FLUID"):
-            row = box.row()
+            row = layout.row()
             split = row.split(factor = 0.4)
             column = split.column()
             column.label(text = "Max U (Data)")
             column = split.column()
             column.prop(properties, "DataTextureResolutionU", text = "")
-
-        # Padding settings
-        if(properties.VATType != "FLUID"):
-            row = box.row()
-            row.label(text = "Texture padding")
-            row.prop(properties, "TexturePaddingEnabled", text = "")
 
 # Register class
 def register():

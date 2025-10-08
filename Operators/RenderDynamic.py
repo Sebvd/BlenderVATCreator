@@ -49,7 +49,8 @@ def RenderDynamic():
         CreateJSON(
             (Bounds[0], Bounds[1]), 
             round(DataTextureSize[1] / RowCount) - 1, 
-            (GetExtends(*Bounds, *StartBounds))
+            (GetExtends(*Bounds, *StartBounds)),
+            DataTextureSize[0]
         )
 
     # Clean up
@@ -278,11 +279,13 @@ def ExportVATMesh(Objects : list[bpy.types.Object]):
 
 
 # Create the JSON data used by the shader
-def CreateJSON(Bounds : tuple[Vector, Vector], RowHeight, Extends):
+def CreateJSON(Bounds : tuple[Vector, Vector], RowHeight, Extends, DataTextureSizeU):
     # Create the JSON dict
     properties = bpy.context.scene.VATExporter_RegularProperties
     SimulationData = dict()
+    SimulationData["Type"] = "DYNAMIC"
     SimulationData["FPS"] = bpy.context.scene.render.fps
+    SimulationData["PixelCountU"] = DataTextureSizeU
     SimulationData["BoundsMin"] = list(Bounds[0])
     SimulationData["BoundsMax"] = list(Bounds[1])
     SimulationData["RowHeight"] = RowHeight
