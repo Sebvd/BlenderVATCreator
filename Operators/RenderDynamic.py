@@ -20,6 +20,7 @@ def RenderDynamic():
     # Basic vars
     context = bpy.context
     StartSelection = FilterSelection(context.selected_objects)
+    print(StartSelection)
     properties = context.scene.VATExporter_RegularProperties
 
     FrameStart = context.scene.frame_start
@@ -82,12 +83,10 @@ def PrePass(Objects : list[bpy.types.Object], FrameStart, FrameEnd, FrameSpacing
 
         # Gather vertex and face data
         LocalFaceCount = 0
-        LocalVertexCount = 0
         for Object in Objects:
             CompareObject = GetObjectAtFrame(Object, Frame)
             VertexCount += len(CompareObject.data.vertices)
             LocalFaceCount += len(CompareObject.data.polygons)
-            LocalVertexCount += len(CompareObject.data.vertices)
 
             # Get the maximum size of the bounding box for each frame
             Corners = [ConvertCoordinate(Vector(Corner) @ Object.matrix_world) for Corner in CompareObject.bound_box]
@@ -252,7 +251,7 @@ def DataPass(Objects : list[bpy.types.Object], TextureSize, Bounds, NewDatas : l
 
 
             FrameVertexCount += len(CompareVertices)
-            LocalVertexCount += len(CompareVertices)
+            LocalVertexCount += len(NewData.vertices)
 
 
     return PixelPositions, PixelNormals, PixelData
@@ -378,7 +377,6 @@ class VATEXPORTER_OT_RenderDynamic(Operator):
     
     # run the function
     def execute(self, context):
-        print("executing dynamic polycounts")
         RenderDynamic()
         return {"FINISHED"}
 

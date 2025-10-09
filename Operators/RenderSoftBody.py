@@ -1,5 +1,5 @@
 import bpy
-from bpy.types import Operator
+from bpy.types import Operator, STATUSBAR_HT_header
 from bpy.utils import register_class, unregister_class
 from math import ceil, floor
 from mathutils import Vector
@@ -15,7 +15,8 @@ from .VATFunctions import (
     ExportWithLODs, 
     GetExtends,
     ConvertCoordinate,
-    GetEvaluationFrame
+    GetEvaluationFrame,
+    DrawProgressBar
 )
 
 # Softbody calculation
@@ -354,6 +355,7 @@ class VATEXPORTER_OT_RenderSoftBody(Operator):
         if(not bpy.context.selected_objects):
             self.report({"WARNING"}, "Nothing is selected")
             return {"CANCELLED"}
+          
 
         bVATError, VATErrorDescription = RenderSoftbodyVAT()
         if(bVATError):

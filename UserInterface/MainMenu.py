@@ -40,6 +40,7 @@ def register():
     for module in modules:
         register_class(module)
 
+
 # Unregister class
 def unregister():
     for module in modules:
