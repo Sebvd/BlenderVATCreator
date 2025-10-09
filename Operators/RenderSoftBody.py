@@ -259,9 +259,10 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], TextureDimensions, FrameCo
 # Creates the JSON file containing the VAT data
 def CreateJSON(Bounds, ExtendsMin, ExtendsMax, properties, PixelCountU, RowHeight):
     # Create JSON dict
+    properties = bpy.context.scene.VATExporter_RegularProperties
     SimulationData = dict()
     SimulationData["Type"] = "SOFTBODY"
-    SimulationData["FPS"] = bpy.context.scene.render.fps
+    SimulationData["FPS"] = int(bpy.context.scene.render.fps / properties.FrameSpacing)
     SimulationData["PixelCountU"] = PixelCountU
     SimulationData["Bounds"] = Bounds
     SimulationData["RowHeight"] = RowHeight

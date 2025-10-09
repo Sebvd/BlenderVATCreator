@@ -160,9 +160,10 @@ def NormalizePositions(Positions, Bounds):
 # Create the JSON file for rigid body sims
 def CreateJSON(PositionBounds, ScaleBounds, ExtendsMin, ExtendsMax, properties, PixelCountU, RowHeight):
     # Create the dict
+    properties = bpy.context.scene.VATExporter_RegularProperties
     SimulationData = dict()
     SimulationData["Type"] = "RIGID"
-    SimulationData["FPS"] = bpy.context.scene.render.fps
+    SimulationData["FPS"] = int(bpy.context.scene.render.fps / properties.FrameSpacing)
     SimulationData["PixelCountU"] = PixelCountU
     SimulationData["RowHeight"] = RowHeight
     SimulationData["PositionBounds"] = PositionBounds
@@ -194,7 +195,6 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], StartFrame, TextureDimensi
         TransformMatrix = Object.matrix_world.copy()
         NewObject.data.transform(TransformMatrix)
         bpy.context.collection.objects.link(NewObject)
-
 
         # Setting the UVs (sample texture UVs)
         bm = bmesh.new()

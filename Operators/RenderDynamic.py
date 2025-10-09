@@ -28,7 +28,7 @@ def RenderDynamic():
 
     # Prepass: Get the basic data on the simulation and the target textures
     Modifiers = PrepareSelectedObjects(StartSelection)
-    FrameCount = (FrameEnd - FrameStart + 1)
+    FrameCount = ceil((FrameEnd - FrameStart + 1) / FrameSpacing)
 
     # Pass 1: Prepass
     VertexCount, Bounds, RestPoseFrame, RowCount, DataTextureSize, StartBounds = PrePass(StartSelection, FrameStart, FrameEnd, FrameSpacing)
@@ -114,7 +114,7 @@ def PrePass(Objects : list[bpy.types.Object], FrameStart, FrameEnd, FrameSpacing
     # Calculate data texture size
     properties = bpy.context.scene.VATExporter_RegularProperties
     MaxTextureSizeU = properties.DataTextureResolutionU
-    FrameCount = FrameEnd - FrameStart + 1
+    FrameCount = ceil((FrameEnd - FrameStart + 1) / FrameSpacing)
     VATMeshVertexCount = MaxFaceCount * 3
     RowCount = ceil(VATMeshVertexCount / MaxTextureSizeU)
     DataTextureSize = (ceil(VATMeshVertexCount / RowCount), RowCount * FrameCount)
@@ -187,6 +187,7 @@ def DataPass(Objects : list[bpy.types.Object], TextureSize, Bounds, NewDatas : l
     PixelNormals = np.zeros((TransformTextureSize, 4))
     FrameStart = bpy.context.scene.frame_start
     FrameEnd = bpy.context.scene.frame_end
+    FrameSpacing = bpy.context.scene.VATExporter_RegularProperties.FrameSpacing
     BoundsMin = Bounds[0]
     BoundsMax = Bounds[1]
 
@@ -198,8 +199,12 @@ def DataPass(Objects : list[bpy.types.Object], TextureSize, Bounds, NewDatas : l
     # Write to the texture data
     FrameVertexCount = 0
     for Frame in range(FrameStart, FrameEnd + 1):
+        if((Frame - FrameStart) % FrameSpacing != 0):
+            continue  
+
         LocalVertexCount = 0
-        VerticalPixelIndex = DataTextureSize[0] * (Frame - FrameStart)
+        FrameIndex = floor((Frame - FrameStart) / FrameSpacing)
+        VerticalPixelIndex = DataTextureSize[0] * FrameIndex
         for i, NewData in enumerate(NewDatas):
             CompareObject = GetObjectAtFrame(Objects[i], Frame)
             UVLayer = CompareObject.data.uv_layers.active
@@ -267,9 +272,9 @@ def ExportVATMesh(Objects : list[bpy.types.Object]):
         Object.select_set(True)
     
     # Export
-    BaseName = properties.FileMeshName
-    BaseDirectory = properties.OutputDirectory
-    ExportFile = os.path.join(BaseDirectory, bpy.path.clean_name(BaseName) + ".fbx")
+    BaseName = bpy.path.clean_name(properties.FileMeshName)
+    TargetDirectory = bpy.path.abspath(properties.OutputDirectory)
+    ExportFile = os.path.join(TargetDirectory, bpy.path.clean_name(BaseName) + ".fbx")
     bpy.ops.export_scene.fbx(
         filepath = ExportFile,
         use_selection = True,
@@ -284,7 +289,7 @@ def CreateJSON(Bounds : tuple[Vector, Vector], RowHeight, Extends, DataTextureSi
     properties = bpy.context.scene.VATExporter_RegularProperties
     SimulationData = dict()
     SimulationData["Type"] = "DYNAMIC"
-    SimulationData["FPS"] = bpy.context.scene.render.fps
+    SimulationData["FPS"] = int(bpy.context.scene.render.fps / properties.FrameSpacing)
     SimulationData["PixelCountU"] = DataTextureSizeU
     SimulationData["BoundsMin"] = list(Bounds[0])
     SimulationData["BoundsMax"] = list(Bounds[1])

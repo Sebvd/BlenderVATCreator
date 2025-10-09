@@ -126,8 +126,8 @@ def ExportWithLODs(Objects : list[bpy.types.Object]):
         bpy.ops.vatexporter.addlod() # Add LOD0 incase its missing
 
     # Iterate through the LODs and export
-    BaseName = properties.FileMeshName
-    BaseDirectory = properties.OutputDirectory
+    BaseName = bpy.path.clean_name(properties.FileMeshName)
+    BaseDirectory = bpy.path.abspath(properties.OutputDirectory)
     for i, LOD in enumerate(LODList):
         # Correct settings for the LODs
         AngleLimit = 3.141519 * (1 - LOD.ReductionRate / 100.0)
