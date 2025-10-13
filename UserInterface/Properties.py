@@ -1,6 +1,6 @@
 import bpy
 from bpy.types import PropertyGroup, Operator
-from bpy.props import IntProperty, EnumProperty, PointerProperty, BoolProperty, StringProperty
+from bpy.props import IntProperty, EnumProperty, PointerProperty, BoolProperty, StringProperty, FloatProperty
 from bpy.utils import register_class, unregister_class
 
 # Main property group
@@ -161,7 +161,7 @@ class VATEXPORTER_PG_Properties(PropertyGroup):
     FileDataTexture : StringProperty(
         name = "File data texture name",
         description = "The target file name for the data texture",
-        default = "T_Simulation_VATL",
+        default = "T_Simulation_VATD",
         subtype = "FILE_NAME"
     )
     FileDataTextureEnabled : BoolProperty(
@@ -208,6 +208,12 @@ class VATEXPORTER_PG_Properties(PropertyGroup):
             ("16", "16 bit float", "")
         ],
         default = "8"
+    )
+
+    # Progress for progress bar
+    ProgressBar : FloatProperty(
+        name = "Progress Bar",
+        default = 0.0
     )
 
  

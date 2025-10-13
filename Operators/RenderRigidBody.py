@@ -82,7 +82,7 @@ def RenderRigidBody():
             # Create the bounds data
             CompareBounds(PositionBounds, FrameLocation)
             CompareBounds(ScaleBounds, FrameScale)
-            Corners = [Object.matrix_world @ Vector(Corner) for Corner in Object.bound_box]
+            Corners = [ConvertCoordinate(Object.matrix_world @ Vector(Corner)) for Corner in Object.bound_box]
             for Corner in Corners:
                 ExtendsMin = np.minimum(ExtendsMin, Corner)
                 ExtendsMax = np.maximum(ExtendsMax, Corner)

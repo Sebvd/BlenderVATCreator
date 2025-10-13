@@ -5,7 +5,7 @@ import json
 from bpy.utils import register_class, unregister_class
 from bpy.types import Operator
 from math import ceil, floor
-from mathutils import Vector
+from mathutils import Vector, Matrix
 import numpy as np
 from .VATFunctions import (
     FilterSelection,
@@ -89,7 +89,7 @@ def PrePass(Objects : list[bpy.types.Object], FrameStart, FrameEnd, FrameSpacing
             LocalFaceCount += len(CompareObject.data.polygons)
 
             # Get the maximum size of the bounding box for each frame
-            Corners = [ConvertCoordinate(Vector(Corner) @ Object.matrix_world) for Corner in CompareObject.bound_box]
+            Corners = [ConvertCoordinate(Object.matrix_world @ Vector(Corner)) for Corner in Object.bound_box]
             LocalBoundsMin = np.array([np.inf] * 3)
             LocalBoundsMax = np.array([np.inf * -1] * 3)
             for Corner in Corners:
@@ -139,16 +139,15 @@ def MeshPass(Objects : list[bpy.types.Object], RestPoseFrame, FrameCount, DataTe
         CompareObject = GetObjectAtFrame(Object, RestPoseFrame)
         NewData = bpy.data.meshes.new_from_object(CompareObject)
         NewObject = bpy.data.objects.new(Object.name, NewData)
+        NewData.transform(Object.matrix_world)
         bpy.context.collection.objects.link(NewObject)
 
         # Separate all the triangles in the mesh
-        Normals = [Vector((0,1,0)) for Loop in NewData.loops]
         bm = bmesh.new()
         bm.from_mesh(NewData)
         bmesh.ops.split_edges(bm, edges = bm.edges)
         bm.to_mesh(NewData)
         bm.free()
-        NewData.normals_split_custom_set(Normals)
         NewData.update()
 
         # Clear the UV channels of this new object
@@ -179,7 +178,7 @@ def MeshPass(Objects : list[bpy.types.Object], RestPoseFrame, FrameCount, DataTe
     return NewObjects, NewDatas
 
 # Data pass: Creates the position, normal and data textures
-def DataPass(Objects : list[bpy.types.Object], TextureSize, Bounds, NewDatas : list[bpy.types.Mesh], FrameCount, DataTextureSize):  
+def DataPass(Objects : list[bpy.types.Object], TextureSize, Bounds, RestPoseDatas : list[bpy.types.Mesh], FrameCount, DataTextureSize):  
     # Position and normal texture data
     TransformTextureSize = TextureSize[0] * TextureSize[1]
     PixelPositions = np.zeros((TransformTextureSize, 4))
@@ -204,36 +203,42 @@ def DataPass(Objects : list[bpy.types.Object], TextureSize, Bounds, NewDatas : l
         LocalVertexCount = 0
         FrameIndex = floor((Frame - FrameStart) / FrameSpacing)
         VerticalPixelIndex = DataTextureSize[0] * FrameIndex
-        for i, NewData in enumerate(NewDatas):
+        for i, RestPoseData in enumerate(RestPoseDatas):
             CompareObject = GetObjectAtFrame(Objects[i], Frame)
             UVLayer = CompareObject.data.uv_layers.active
             CompareVertices = CompareObject.data.vertices
-            Polygons = NewData.polygons
-            Loops = NewData.loops
+            RestPosePolygons = RestPoseData.polygons
+            RestPoseLoops = RestPoseData.loops
             TargetLoops = CompareObject.data.loops
-            for Polygon in Polygons:
-                if(Polygon.index >= len(CompareObject.data.polygons)):
+            for RestPosePolygon in RestPosePolygons:
+                if(RestPosePolygon.index >= len(CompareObject.data.polygons)):
                     continue
-                TargetPolygon = CompareObject.data.polygons[Polygon.index]
+                TargetPolygon = CompareObject.data.polygons[RestPosePolygon.index]
                 PolygonLoops = TargetPolygon.loop_indices
-                LoopIndices = Polygon.loop_indices
-                for k, LoopIndex in enumerate(LoopIndices):
+                RestPoseLoopIndices = RestPosePolygon.loop_indices
+                for k, RestPoseLoopIndex in enumerate(RestPoseLoopIndices):
                     # Get the data for the pixel positions
                     TargetLoop = TargetLoops[PolygonLoops[k]]
                     VertexIndex = TargetLoop.vertex_index
                     TargetVertex = CompareVertices[VertexIndex]
                     TransformArrayPosition = VertexIndex + FrameVertexCount + 1
-                    TargetPosition = TargetVertex.co
+
+                    # Calculate the translation data
+                    TargetPosition = Objects[i].matrix_world @ TargetVertex.co
+                    ConvertedPosition = ConvertCoordinate(TargetPosition)
+
+                    # Calculate the normal data
                     TargetNormal = ConvertCoordinate(TargetVertex.normal)
                     ConvertedNormal = UnsignVector(Vector((TargetNormal[0], TargetNormal[1], TargetNormal[2])))
-                    ConvertedPosition = ConvertCoordinate(TargetPosition)
+
+                    # Write to
                     PixelPositions[TransformArrayPosition] = (*GetRelativePosition(ConvertedPosition, Vector(BoundsMin), Vector(BoundsMax)), 1.0)
                     PixelNormals[TransformArrayPosition] = (*ConvertedNormal, 1.0)
 
                     # Write the data for the data texture
                     # UV data of transform textures
-                    CurrentRow = floor((Loops[LoopIndex].vertex_index + LocalVertexCount) / DataTextureSize[0])
-                    Remainder = (Loops[LoopIndex].vertex_index + LocalVertexCount ) % DataTextureSize[0]
+                    CurrentRow = floor((RestPoseLoops[RestPoseLoopIndex].vertex_index + LocalVertexCount) / DataTextureSize[0])
+                    Remainder = (RestPoseLoops[RestPoseLoopIndex].vertex_index + LocalVertexCount ) % DataTextureSize[0]
                     DataTextureArrayIndex = CurrentRow * DataTextureSize[0] * FrameCount + Remainder + VerticalPixelIndex
                     # UV data of source mesh
                     Coordinates = (0.0, 0.0)
@@ -251,7 +256,7 @@ def DataPass(Objects : list[bpy.types.Object], TextureSize, Bounds, NewDatas : l
 
 
             FrameVertexCount += len(CompareVertices)
-            LocalVertexCount += len(NewData.vertices)
+            LocalVertexCount += len(RestPoseData.vertices)
 
 
     return PixelPositions, PixelNormals, PixelData

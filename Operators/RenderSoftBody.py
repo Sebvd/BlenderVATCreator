@@ -15,8 +15,7 @@ from .VATFunctions import (
     ExportWithLODs, 
     GetExtends,
     ConvertCoordinate,
-    GetEvaluationFrame,
-    DrawProgressBar
+    GetEvaluationFrame
 )
 
 # Softbody calculation
@@ -68,21 +67,26 @@ def RenderSoftbodyVAT():
             for Vertex in Vertices:
                 # Get the vertex data
                 CompareVertex = StartVertices[FrameVertexCount + Vertex.index]
-                VertexOffset = ConvertCoordinate(Vertex.co - CompareVertex.co)
+                PositionOffset = ConvertCoordinate(Vertex.co - CompareVertex.co)
                 VertexNormal = UnsignVector(ConvertCoordinate(Vertex.normal.copy()))
+
+                # Update extends for correct culling
+                ConvertedPosition = ConvertCoordinate(Vertex.co)
+                np.minimum(ConvertedPosition[:], ExtendsMin, ExtendsMin)
+                np.maximum(ConvertedPosition[:], ExtendsMax, ExtendsMax)
                 
                 # Write the vertex data to the array
                 CurrentRow = floor((FrameVertexCount + Vertex.index) / TextureDimensions[0])
                 Remainder = (FrameVertexCount +  Vertex.index) % TextureDimensions[0]
                 TextureArrayIndex = CurrentRow * TextureDimensions[0] * FrameCount + Remainder + VerticalPixelIndex
-                PixelPositions[TextureArrayIndex] = (*VertexOffset, 1.0)
+                PixelPositions[TextureArrayIndex] = (*PositionOffset, 1.0)
                 PixelNormals[TextureArrayIndex] = (*VertexNormal, 1.0)
             
             ObjectVertexCount = len(Vertices)
             bpy.data.meshes.remove(CompareMesh)
 
             # Update bounds
-            CompareBounds(Bounds, VertexOffset)
+            CompareBounds(Bounds, PositionOffset)
 
             # Update local array position
             FrameVertexCount += ObjectVertexCount
