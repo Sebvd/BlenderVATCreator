@@ -24,12 +24,17 @@ def RenderRigidBody():
     # Basic vars
     StartSelection = bpy.context.selected_objects
     SelectedObjects = FilterSelection(StartSelection)
+    if(len(SelectedObjects) < 1):
+        return
     context = bpy.context
     properties = context.scene.VATExporter_RegularProperties
 
     FrameStart = context.scene.frame_start
     FrameEnd = context.scene.frame_end
     FrameSpacing = properties.FrameSpacing
+
+    # Data so we can "reset" the scene later
+    CurrentFrame = bpy.context.scene.frame_current
 
     # Texture data
     ObjectCount = len(SelectedObjects)
@@ -44,7 +49,8 @@ def RenderRigidBody():
     ScaleBounds = Vector((0.0, 0.0, 0.0))
     ExtendsMin = np.array([np.inf] * 3)
     ExtendsMax = np.array([np.inf * -1] * 3)
-    CompareLocations, StartScales, StartRotations, StartExtendsMin, StartExtendsMax = PrepareSelectedObjects(SelectedObjects, GetEvaluationFrame())
+    EvaluationFrame = GetEvaluationFrame()
+    CompareLocations, StartScales, StartRotations, StartExtendsMin, StartExtendsMax = PrepareSelectedObjects(SelectedObjects, EvaluationFrame)
 
     # Accumulate the VAT data
     for Frame in range(FrameStart, FrameEnd + 1):
@@ -96,7 +102,7 @@ def RenderRigidBody():
 
     # Create exports
     if(properties.FileMeshEnabled):
-        CreateVATMeshes(SelectedObjects, FrameStart, TextureDimensions, FrameCount)
+        CreateVATMeshes(SelectedObjects, EvaluationFrame, TextureDimensions, FrameCount)
     if(properties.FilePositionTextureEnabled):
         CreateTexture(PixelPositions, TextureDimensions[0], TextureDimensions[1], properties.FilePositionTexture, properties.FilePositionTextureFormat)
     if(properties.FileRotationTextureEnabled):
@@ -112,8 +118,14 @@ def RenderRigidBody():
             OutputExtendsMax, 
             properties,
             TextureDimensions[0],
-            FrameCount - 1
+            FrameCount
             )
+
+    # "Reset" scene
+    bpy.context.scene.frame_current = CurrentFrame
+    bpy.ops.object.select_all(action = "DESELECT")
+    for SelectedObject in StartSelection:
+        SelectedObject.select_set(True)
 
 # Prepare the objects at the evaluation frame
 def PrepareSelectedObjects(Objects : list[bpy.types.Object], EvaluationFrame : int, bShouldTransform : bool = True):
@@ -343,18 +355,18 @@ class VATEXPORTER_OT_RenderRigidBody(Operator):
         # Check if we can export. If not, cancel the operation
         bIsExportValid, Warning = IsDefaultExportValid()
         if(not bIsExportValid):
-            self.report({"WARNING"}, Warning)
+            self.report({"ERROR"}, Warning)
             return {"CANCELLED"}
         # Check if we can export based on viewport selection
         if(not bpy.context.selected_objects):
-            self.report({"WARNING"}, "Nothing is selected")
+            self.report({"ERROR"}, "Nothing is selected")
             return {"CANCELLED"}
     
 
         # Check if we can export based on the UV layers in the selected objects
-        bIsExportValid, Warning = CheckUVChannels(bpy.context.selected_objects)
+        bIsExportValid, Warning = CheckUVChannels(FilterSelection(bpy.context.selected_objects))
         if(not bIsExportValid):
-            self.report({"WARNING"}, Warning)
+            self.report({"ERROR"}, Warning)
             return {"CANCELLED"}
 
         RenderRigidBody()

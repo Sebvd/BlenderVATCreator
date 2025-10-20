@@ -19,25 +19,30 @@ from .VATFunctions import (
 def RenderDynamic():
     # Basic vars
     context = bpy.context
-    StartSelection = FilterSelection(context.selected_objects)
-    print(StartSelection)
+    StartSelection = context.selected_objects
+    SelectedObjects = FilterSelection(StartSelection)
+    if(len(SelectedObjects) < 1):
+        return True, "No valid meshes selected"
     properties = context.scene.VATExporter_RegularProperties
 
     FrameStart = context.scene.frame_start
     FrameEnd = context.scene.frame_end
     FrameSpacing = properties.FrameSpacing
 
+    # Save data so we can "restore" the scene later
+    CurrentFrame = bpy.context.scene.frame_current
+
     # Prepass: Get the basic data on the simulation and the target textures
-    Modifiers = PrepareSelectedObjects(StartSelection)
+    Modifiers = PrepareSelectedObjects(SelectedObjects)
     FrameCount = ceil((FrameEnd - FrameStart + 1) / FrameSpacing)
 
     # Pass 1: Prepass
-    VertexCount, Bounds, RestPoseFrame, RowCount, DataTextureSize, StartBounds = PrePass(StartSelection, FrameStart, FrameEnd, FrameSpacing)
+    VertexCount, Bounds, RestPoseFrame, RowCount, DataTextureSize, StartBounds = PrePass(SelectedObjects, FrameStart, FrameEnd, FrameSpacing)
     TransformTextureSize = GetTextureDimensions(VertexCount + 1)
 
     # Data pass
-    NewObjects, NewDatas = MeshPass(StartSelection, RestPoseFrame, FrameCount, DataTextureSize)
-    PixelPositions, PixelNormals, PixelData = DataPass(StartSelection, TransformTextureSize, Bounds, NewDatas, FrameCount, DataTextureSize)
+    NewObjects, NewDatas = MeshPass(SelectedObjects, RestPoseFrame, FrameCount, DataTextureSize)
+    PixelPositions, PixelNormals, PixelData = DataPass(SelectedObjects, TransformTextureSize, Bounds, NewDatas, FrameCount, DataTextureSize)
 
     # Export
     if(properties.FilePositionTextureEnabled):
@@ -49,19 +54,27 @@ def RenderDynamic():
     if(properties.FileJSONDataEnabled):
         CreateJSON(
             (Bounds[0], Bounds[1]), 
-            round(DataTextureSize[1] / RowCount) - 1, 
+            round(DataTextureSize[1] / RowCount), 
             (GetExtends(*Bounds, *StartBounds)),
             DataTextureSize[0]
         )
 
     # Clean up
-    for i, Object in enumerate(StartSelection): 
+    for i, Object in enumerate(SelectedObjects): 
         Object.modifiers.remove(Modifiers[i * 2])
         Object.modifiers.remove(Modifiers[i * 2 + 1])
 
     for i, NewObject in enumerate(NewObjects):
         bpy.data.objects.remove(NewObject)
         bpy.data.meshes.remove(NewDatas[i])
+
+    # "Reset" the scene
+    bpy.context.scene.frame_current = CurrentFrame
+    bpy.ops.object.select_all(action = "DESELECT")
+    for SelectedObject in StartSelection:
+        SelectedObject.select_set(True)
+
+    return False, ""
 
 # Prepass: Get the basic data on the simulation and the target textures
 def PrePass(Objects : list[bpy.types.Object], FrameStart, FrameEnd, FrameSpacing):
@@ -118,14 +131,13 @@ def PrePass(Objects : list[bpy.types.Object], FrameStart, FrameEnd, FrameSpacing
     RowCount = ceil(VATMeshVertexCount / MaxTextureSizeU)
     DataTextureSize = (ceil(VATMeshVertexCount / RowCount), RowCount * FrameCount)
 
-
     return VertexCount, Bounds, RestPoseFrame, RowCount, DataTextureSize, StartBounds
 
 # Create VAT meshes
-def MeshPass(Objects : list[bpy.types.Object], RestPoseFrame, FrameCount, DataTextureSize):
+def MeshPass(Objects : list[bpy.types.Object], EvaluationFrame, FrameCount, DataTextureSize):
     # Mesh data
     scene = bpy.context.scene
-    scene.frame_set(RestPoseFrame)
+    scene.frame_set(EvaluationFrame)
     bpy.ops.Object.select_all(action = "DESELECT")
     NewObjects = []
     NewDatas = []
@@ -136,7 +148,7 @@ def MeshPass(Objects : list[bpy.types.Object], RestPoseFrame, FrameCount, DataTe
     for Object in Objects:
         # Create duplicate objects with new data
         NewObject = Object.copy()
-        CompareObject = GetObjectAtFrame(Object, RestPoseFrame)
+        CompareObject = GetObjectAtFrame(Object, EvaluationFrame)
         NewData = bpy.data.meshes.new_from_object(CompareObject)
         NewObject = bpy.data.objects.new(Object.name, NewData)
         NewData.transform(Object.matrix_world)
@@ -362,6 +374,50 @@ def GetTextureDimensions(VertexCount : int) -> tuple:
 
     return TransformTextureSize
 
+# Check if the export data is valid
+def IsDefaultExportValid():
+    # Get properties
+    properties = bpy.context.scene.VATExporter_RegularProperties
+    
+    # Check directory
+    BaseDirectory = bpy.path.abspath(properties.OutputDirectory)
+    if(os.path.isdir(BaseDirectory) == False):
+        Warning = "Target directory is not valid"
+        return True, Warning
+    
+    # Check file for meshes
+    FileMeshName = bpy.path.clean_name(properties.FileMeshName)
+    FileMeshEnabled = properties.FileMeshEnabled
+    if(FileMeshName == "" and FileMeshEnabled):
+        Warning = "Incorrect mesh name"
+        return True, Warning
+    # Check file name for JSON file
+    FileJSONData = bpy.path.clean_name(properties.FileJSONData)
+    FileJSONDataEnabled = properties.FileJSONDataEnabled
+    if(FileJSONData == "" and FileJSONDataEnabled):
+        Warning = "Incorrect JSON file name"
+        return True, Warning
+    # Check file name for position texture
+    FilePositionTexture = bpy.path.clean_name(properties.FilePositionTexture)
+    FilePositionTextureEnabled = properties.FilePositionTextureEnabled
+    if(FilePositionTexture == "" and FilePositionTextureEnabled):
+        Warning = "Incorrect position texture name"
+        return True, Warning
+    # Check file name for rotation texture
+    FileRotationTexture = bpy.path.clean_name(properties.FileRotationTexture)
+    FileRotationTextureEnabled = properties.FileRotationTextureEnabled
+    if(FileRotationTexture == "" and FileRotationTextureEnabled):
+        Warning = "Incorrect rotation texture name"
+        return True, Warning
+    # Check f ile name for data texture
+    FileDataTexture = bpy.path.clean_name(properties.FileDataTexture)
+    FileDataTextureEnabled = properties.FileDataTextureEnabled
+    if(FileDataTexture == "" and FileDataTextureEnabled):
+        Warning = "Incorrect data texture name"
+        return True, Warning
+
+    return False, ""
+
 class VATEXPORTER_OT_RenderDynamic(Operator):
     bl_idname = "vatexporter.renderdynamic"
     bl_label = "Render dynamic polycounts to VAT"
@@ -371,18 +427,31 @@ class VATEXPORTER_OT_RenderDynamic(Operator):
     @classmethod
     def poll(self, context):
         # Check based on object selection
-        bHasActiveObject = context.active_object != None
         bIsObjectMode = context.mode == "OBJECT"
 
         # Check based on user settings
         properties = context.scene.VATExporter_RegularProperties
         bIsExporting = properties.FileMeshEnabled or properties.FileJSONDataEnabled or properties.FilePositionTextureEnabled or properties.FileRotationTextureEnabled or properties.FileDataTextureEnabled
 
-        return bHasActiveObject and bIsObjectMode and bIsExporting
+        return bIsObjectMode and bIsExporting
     
     # run the function
     def execute(self, context):
-        RenderDynamic()
+        # Check if we can export based on file inputs
+        bVATError, VATErrorDescription = IsDefaultExportValid()
+        if(bVATError):
+            self.report({"ERROR"}, VATErrorDescription)
+            return {"CANCELLED"}
+        # Check if we can export based on viewport selection]
+        if(not bpy.context.selected_objects):
+            self.report({"ERROR"}, "Nothing is selected")
+            return {"CANCELLED"}
+        
+        # Run the main operation
+        bVATError, VATErrorDescription = RenderDynamic()
+        if(bVATError):
+            self.report({"ERROR"}, VATErrorDescription)
+            return {"CANCELLED"}
         return {"FINISHED"}
 
 def register():

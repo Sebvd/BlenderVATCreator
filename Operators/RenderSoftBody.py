@@ -23,6 +23,8 @@ def RenderSoftbodyVAT():
     # Main starting data
     StartSelection = bpy.context.selected_objects
     SelectedObjects = FilterSelection(StartSelection)
+    if(len(SelectedObjects) < 1):
+        return True, "No valid meshes selected"
     context = bpy.context
     properties = context.scene.VATExporter_RegularProperties
     bCaughtVATError = False
@@ -31,11 +33,14 @@ def RenderSoftbodyVAT():
     FrameEnd = context.scene.frame_end
     FrameSpacing = properties.FrameSpacing
 
+    # Data so we can "reset" the scene at the end
+    FrameCurrent = context.scene.frame_current
+    StartActive = bpy.context.active_object
+
     # Prepare selected objects
     EvaluationFrame = GetEvaluationFrame()
     EdgeSplitModifiers, VertexCount, StartVertices, CompareMeshes, StartExtendsMin, StartExtendsMax = PrepareSelectedObjects(SelectedObjects, EvaluationFrame)
     FrameCount = ceil((FrameEnd - FrameStart + 1) / FrameSpacing)
-    
     
     # Initialize export data
     TextureDimensions = GetTextureDimensions(VertexCount, FrameCount)
@@ -50,8 +55,8 @@ def RenderSoftbodyVAT():
     PrevFrameVertexCount = 0
     for Frame in range(FrameStart, FrameEnd + 1):
         # Check if we should write data for this specific frame (if we don't it might break non-cached simulations)
+        bpy.context.scene.frame_set(Frame)
         if((Frame - FrameStart) % FrameSpacing != 0):
-            bpy.context.scene.frame_set(Frame)
             continue
 
         # Start writing to frame
@@ -81,12 +86,12 @@ def RenderSoftbodyVAT():
                 TextureArrayIndex = CurrentRow * TextureDimensions[0] * FrameCount + Remainder + VerticalPixelIndex
                 PixelPositions[TextureArrayIndex] = (*PositionOffset, 1.0)
                 PixelNormals[TextureArrayIndex] = (*VertexNormal, 1.0)
+
+                # Update bounds
+                CompareBounds(Bounds, PositionOffset)
             
             ObjectVertexCount = len(Vertices)
             bpy.data.meshes.remove(CompareMesh)
-
-            # Update bounds
-            CompareBounds(Bounds, PositionOffset)
 
             # Update local array position
             FrameVertexCount += ObjectVertexCount
@@ -110,7 +115,7 @@ def RenderSoftbodyVAT():
 
     # Create the export data
     if(properties.FileMeshEnabled):
-        CreateVATMeshes(SelectedObjects, TextureDimensions, FrameCount, FrameStart)
+        CreateVATMeshes(SelectedObjects, TextureDimensions, FrameCount, EvaluationFrame)
     if(properties.FilePositionTextureEnabled):
         CreateTexture(PixelPositions, TextureDimensions[0], TextureDimensions[1], properties.FilePositionTexture, properties.FilePositionTextureFormat)
     if(properties.FileRotationTextureEnabled):
@@ -122,18 +127,20 @@ def RenderSoftbodyVAT():
                    OutputExtendsMax, 
                    properties, 
                    TextureDimensions[0], 
-                   FrameCount - 1
+                   FrameCount
                    )
 
     # Reset selected objects to their original state
     for CompareMesh in CompareMeshes:
         bpy.data.meshes.remove(CompareMesh)
-        pass
 
     RemoveEdgeSplit(SelectedObjects, EdgeSplitModifiers)
-    bpy.context.scene.frame_set(FrameStart)
+    bpy.context.scene.frame_set(FrameCurrent)
+    bpy.ops.object.select_all(action = "DESELECT")
     for Object in StartSelection:
         Object.select_set(True)
+    if(StartActive != None):
+        bpy.context.view_layer.objects.active = StartActive
 
     # Return
     return False, ""
@@ -214,9 +221,9 @@ def NormalizePositions(Positions, Bounds):
     return NormalizedPositions, MeasureBounds
 
 # Create VAT mesh andd export it
-def CreateVATMeshes(Objects : list[bpy.types.Object], TextureDimensions, FrameCount, StartFrame):
+def CreateVATMeshes(Objects : list[bpy.types.Object], TextureDimensions, FrameCount, EvaluationFrame):
     scene = bpy.context.scene
-    scene.frame_set(StartFrame)
+    scene.frame_set(EvaluationFrame)
     LocalVertexCount = 0
     bpy.ops.object.select_all(action = "DESELECT")
     NewObjects = []
@@ -224,7 +231,7 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], TextureDimensions, FrameCo
     for Object in Objects:
         # Create a copy
         NewObject = Object.copy()
-        NewData = GetMeshAtFrame(Object, StartFrame, False)
+        NewData = GetMeshAtFrame(Object, EvaluationFrame)
         NewObject.data = NewData
 
         # Apply the modifiers for each object (e.g., subsurf modifer can cause UV issues)
@@ -338,7 +345,6 @@ class VATEXPORTER_OT_RenderSoftBody(Operator):
     @classmethod
     def poll(cls, context):
         # Check based on object selection
-        bHasActiveObject = context.active_object != None
         bIsObjectMode = context.mode == "OBJECT"
 
         # Check based on user settings
@@ -346,18 +352,18 @@ class VATEXPORTER_OT_RenderSoftBody(Operator):
         bIsExporting = properties.FileMeshEnabled or properties.FileJSONDataEnabled or properties.FilePositionTextureEnabled or properties.FileRotationTextureEnabled
 
         # Return poll
-        return bHasActiveObject and bIsObjectMode and bIsExporting
+        return bIsObjectMode and bIsExporting
     
     # run the function
     def execute(self, context):
         # Check if we can export. If not, cancel the operation
         bIsExportValid, Warning = IsDefaultExportValid()
         if(bIsExportValid == False):
-            self.report({"WARNING"}, Warning)
+            self.report({"ERROR"}, Warning)
             return {"CANCELLED"}
         # Check if we can export based on viewport selection
         if(not bpy.context.selected_objects):
-            self.report({"WARNING"}, "Nothing is selected")
+            self.report({"ERROR"}, "Nothing is selected")
             return {"CANCELLED"}
           
 

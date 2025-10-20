@@ -112,6 +112,7 @@ def ExportWithLODs(Objects : list[bpy.types.Object]):
 
     # Give each object a decimate modifier, store the modifier in an array
     DecimateModifiers = []
+    bpy.ops.object.select_all(action = "DESELECT")
     for Object in Objects:
         Object.select_set(True)
         DecimateModifier = Object.modifiers.new("Decimate", "DECIMATE")
@@ -158,7 +159,7 @@ def GetEvaluationFrame():
     elif(properties.RestPose == "RANGEEND"):
         return scene.frame_end
     else:
-        return properties.CustomCustomRestPoseFrame
+        return properties.CustomRestPoseFrame
 
 def ConvertQuaternion(RawQuaternion : Quaternion) -> Quaternion:
     # Transform the quaternion based on the coordinate system given in the input

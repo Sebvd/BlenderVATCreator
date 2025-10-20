@@ -45,8 +45,7 @@ class VATEXPORTER_MT_EnginePresets(Menu):
         layout = self.layout
         column = layout.column()
         column.operator("vatexporter.selectenginepreset", text = "Blender (default)").EngineOption = "BLENDER"
-        column.operator("vatexporter.selectenginepreset", text = "Unreal Engine (pre 5.6)").EngineOption = "OLDUNREAL"
-        column.operator("vatexporter.selectenginepreset", text = "Unreal Engine").EngineOption = "NEWUNREAL"
+        column.operator("vatexporter.selectenginepreset", text = "Unreal Engine").EngineOption = "OLDUNREAL"
         column.operator("vatexporter.selectenginepreset", text = "Unity").EngineOption = "UNITY"
         column.operator("vatexporter.selectenginepreset", text = "Godot").EngineOption = "GODOT"
 
@@ -61,7 +60,6 @@ class VATEXPORTER_OT_SelectEnginePreset(Operator):
         items = [
             ("BLENDER", "Blender (default)", ""),
             ("OLDUNREAL", "Unreal Engine (old)", ""),
-            ("NEWUNREAL", "Unreal Engine", ""),
             ("UNITY", "Unity", ""),
             ("GODOT", "Godot", "")
         ]
@@ -81,11 +79,6 @@ class VATEXPORTER_OT_SelectEnginePreset(Operator):
                 properties.FlipY = True
                 properties.FlipZ = False
                 properties.CoordinateSystem = "xyz"
-            case "NEWUNREAL":
-                properties.FlipX = False
-                properties.FlipY = False
-                properties.FlipZ = False
-                properties.CoordinateSystem = "xzy"
             case "UNITY":
                 properties.FlipX = False
                 properties.FlipY = False
