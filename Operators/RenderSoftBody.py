@@ -55,8 +55,8 @@ def RenderSoftbodyVAT():
     PrevFrameVertexCount = 0
     for Frame in range(FrameStart, FrameEnd + 1):
         # Check if we should write data for this specific frame (if we don't it might break non-cached simulations)
-        bpy.context.scene.frame_set(Frame)
         if((Frame - FrameStart) % FrameSpacing != 0):
+            bpy.context.scene.frame_set(Frame)
             continue
 
         # Start writing to frame
@@ -221,27 +221,18 @@ def NormalizePositions(Positions, Bounds):
     return NormalizedPositions, MeasureBounds
 
 # Create VAT mesh andd export it
-def CreateVATMeshes(Objects : list[bpy.types.Object], TextureDimensions, FrameCount, EvaluationFrame):
+def CreateVATMeshes(Objects : list[bpy.types.Object], TextureDimensions, FrameCount, StartFrame):
     scene = bpy.context.scene
-    scene.frame_set(EvaluationFrame)
+    scene.frame_set(StartFrame)
     LocalVertexCount = 0
     bpy.ops.object.select_all(action = "DESELECT")
     NewObjects = []
     NewDatas = []
     for Object in Objects:
         # Create a copy
-        NewObject = Object.copy()
-        NewData = GetMeshAtFrame(Object, EvaluationFrame)
-        NewObject.data = NewData
+        NewData = GetMeshAtFrame(Object, StartFrame)
+        NewObject = bpy.data.objects.new(name = Object.name, object_data = NewData)
 
-        # Apply the modifiers for each object (e.g., subsurf modifer can cause UV issues)
-        Modifiers = NewObject.modifiers
-        bpy.context.collection.objects.link(NewObject)
-        for Modifier in Modifiers:
-            bpy.context.view_layer.objects.active = NewObject
-            bpy.ops.object.modifier_apply(modifier = Modifier.name)
-        bpy.context.collection.objects.unlink(NewObject)
-        
         # Create the mesh UVs
         PixelUVLayer = NewObject.data.uv_layers.new(name = "PixelUVs")
         for Loop in NewObject.data.loops:

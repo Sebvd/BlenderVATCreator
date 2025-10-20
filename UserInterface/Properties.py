@@ -210,14 +210,6 @@ class VATEXPORTER_PG_Properties(PropertyGroup):
         default = "8"
     )
 
-    # Progress for progress bar
-    ProgressBar : FloatProperty(
-        name = "Progress Bar",
-        default = 0.0
-    )
-
- 
-
 # Register class
 def register():
     register_class(VATEXPORTER_PG_Properties)

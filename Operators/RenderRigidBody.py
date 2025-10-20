@@ -201,11 +201,8 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], StartFrame, TextureDimensi
     NewDatas = []
     for i, Object in enumerate(Objects):
         # Create a copy of the object
-        NewObject = Object.copy()
-        NewData = GetObjectAtFrame(Object, StartFrame, False)
-        NewObject.data = NewData
-        TransformMatrix = Object.matrix_world.copy()
-        NewObject.data.transform(TransformMatrix)
+        NewData = GetMeshAtFrame(Object, StartFrame)
+        NewObject = bpy.data.objects.new(name = Object.name, object_data = NewData)
         bpy.context.collection.objects.link(NewObject)
 
         # Setting the UVs (sample texture UVs)
@@ -239,7 +236,6 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], StartFrame, TextureDimensi
                 1.0 - VertexLocation[2]
             )
         
-        NewObject.data.transform(TransformMatrix.inverted())
         NewObjects.append(NewObject)
         NewDatas.append(NewData)
     
@@ -252,7 +248,7 @@ def CreateVATMeshes(Objects : list[bpy.types.Object], StartFrame, TextureDimensi
         pass
 
 # Get the object data at a certain frame
-def GetObjectAtFrame(Object : bpy.types.Object, Frame, bShouldTransform : bool = True):
+def GetMeshAtFrame(Object : bpy.types.Object, Frame, bShouldTransform : bool = True):
     # Base variables
     context = bpy.context
     scene = context.scene
@@ -261,12 +257,12 @@ def GetObjectAtFrame(Object : bpy.types.Object, Frame, bShouldTransform : bool =
     # Creating a new measure object at the current frame
     DependencyGraph = context.view_layer.depsgraph
     CompareObject = Object.evaluated_get(DependencyGraph)
-    TemporaryObject = bpy.data.meshes.new_from_object(CompareObject)
+    TemporaryMesh = bpy.data.meshes.new_from_object(CompareObject)
     if(bShouldTransform):
-        TemporaryObject.transform(Object.matrix_world)
+        TemporaryMesh.transform(Object.matrix_world)
 
     # Return
-    return TemporaryObject
+    return TemporaryMesh
 
 # Calculates the texture dimensions based on the user's settings
 def GetTextureDimensions(PixelCountU : int, FrameCount : int):
