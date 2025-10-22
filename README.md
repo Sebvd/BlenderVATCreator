@@ -117,7 +117,7 @@ Next up, you will want to make your VAT material. This works a bit differently f
 
 <img width="624" height="478" alt="afbeelding" src="https://github.com/user-attachments/assets/3a6c185d-e952-4a40-904e-c61cf910fa6c" />
 
-It is also possible to manually adjust the parameters directly in the shader or the material instance:
+ADVANCED: It is also possible to manually adjust the parameters directly in the shader or the material instance:
 
 <img width="316" height="435" alt="afbeelding" src="https://github.com/user-attachments/assets/45ae80b2-1f06-45ba-a221-e8f7b67481f9" />
 
@@ -140,7 +140,6 @@ It is also possible to manually adjust the parameters directly in the shader or 
 
 <img width="605" height="509" alt="afbeelding" src="https://github.com/user-attachments/assets/eee64e97-4a0f-470b-a061-1697ad4f98b4" />
 
-
 - Save your material and go back to the content browser.
 - Right click your material and create a new material instance.
 - Right click your material instance, and navigate to: *Scripted asset actions > Process VAT rigidbody material instance"
@@ -155,7 +154,7 @@ It is also possible to manually adjust the parameters directly in the shader or 
 
 <img width="711" height="412" alt="afbeelding" src="https://github.com/user-attachments/assets/189e0c64-c7da-46d3-ab03-ad8535ac005d" />
 
-It is also possible to manually adjust the parameters directly in the shader or the material instance:
+ADVANCED: It is also possible to manually adjust the parameters directly in the shader or the material instance:
 
 <img width="240" height="474" alt="afbeelding" src="https://github.com/user-attachments/assets/89e0eb18-2e09-4c14-85a4-83a4686098a1" />
 
@@ -176,8 +175,54 @@ It is also possible to manually adjust the parameters directly in the shader or 
 - Scale in Alpha: Wether or not (uniform) scale is packed into the alpha channel of the position texture.
 
 ### Dynamic VAT materials
+- + Create an empty material.
+  + Navigate to: *Plugins > VATTools content > MaterialFunctions > MF_VATDynamic* and add it to your material.
+  + Select your result / "main" material node, and navigate to "num customized UVs". Set this value from 0 to 4.
+  + Hook up the nodes as displayed below.
+ 
+<img width="697" height="455" alt="afbeelding" src="https://github.com/user-attachments/assets/c74f22ad-a2cb-4472-98fe-bd20292ce056" />
 
+- Save your material and go back to the content browser.
+- Right click your material and create a new material instance.
+- Right click your material instance, and navigate to: *Scripted asset actions > Process VAT rigidbody material instance"
+- This will open a tab as seen below.
 
+<img width="416" height="327" alt="afbeelding" src="https://github.com/user-attachments/assets/6849ce3b-2a72-4082-bda7-2a7c1d5f7f23" />
 
+- In this tab, select the JSON file similarly as we did before with the VAT mesh.
+- Give it the position, normal and data texture we imported.
+- Hit OK
+- Applying the new material instance to your VAT mesh will result in a working simulation.
+
+<img width="642" height="587" alt="afbeelding" src="https://github.com/user-attachments/assets/38bd0b18-032b-455c-b503-4f1b1605fb7e" />
+
+ADVANCED: It is also possible to manually adjust the parameters directly in the shader or the material instance:
+
+<img width="301" height="431" alt="afbeelding" src="https://github.com/user-attachments/assets/5f42d245-c116-4e89-a26b-0e318b906b51" />
+
+- Frame Rate: Frame rate in frames per second.
+- Time: The current time in seconds. By default, it is Unreal time as set with the time node.
+- UV: The UVs storing the VAT data. By default it is UV0 and it should not be changed (behind the scenes, Blender removes all UV channels on the VAT mesh, as they do not get preserved anyways. Instead, it transfers the UVs through the data texture. If you had any mesh UVs, you can retrieve it through the "Mesh UVs" output).
+- Frame Count: The number of frames in the simulation. This data is stored in the JSON file as well.
+- Position texture: The texture storing the vertex position data.
+- Position bounds min: The local bounds minimum of the dynamic simulation. This data is stored in the JSON file.
+- Position bounds max: The local bounds max of the dynamic simulation. This data is stored in the JSON file.
+- Normal texture: The texture storing the vertex normal data.
+- Data texture: The texture storing data for the dynamic simulation. This texture is necessary and essential to make the dynamic VAT work.
+
+# Optimizing the VAT simulation
+There are a number of method to optimize the VAT simulation:
+- Lowering the polycount: Lowering the polycounts not only reduces texture sizes, but also the load on the vertex shader.
+- Lowering the polycount by not preserving hard edges (softbody & dynamic).
+- Not interpolating on a shader level: Interpolation uses extra texture samples. Instead, you can also do interpolation using the texture filter. By default, the tool sets the filtering method to "nearest". Instead, you can also use bi-linear, which smooths pixels automatically for you. Please note though that this works best on low polycounts / small textures. 
+
+<img width="599" height="234" alt="afbeelding" src="https://github.com/user-attachments/assets/b8098520-3ab4-47cf-9087-ff9e6fbffcd1" />
+
+- Using rigidbody sim wherever possible: Rigid body simulations do not have limitations on polycounts, and are therefore much more performant. If there are some parts of your simulation that do not deform, consider using rigidbody for those instead.
+
+# Example content
+If you navigate to: *Plugins > VATTools content > Samples > L_SampleVATs* you will be able to find several examples in a level that can be used as reference.
+
+<img width="1205" height="680" alt="afbeelding" src="https://github.com/user-attachments/assets/71c57a6f-221c-43d6-8eb4-a7c54f29ff73" />
 
 
