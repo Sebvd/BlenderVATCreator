@@ -358,7 +358,7 @@ def GetObjectAtFrame(Object : bpy.types.Object, Frame : int) -> bpy.types.Object
 def GetRelativePosition(Position : Vector, BoundsMin : Vector, BoundsMax : Vector) -> Vector:
     OriginPosition = Position - BoundsMin
     BoundsSize = BoundsMax - BoundsMin
-    RelativePosition = Vector([OriginPosition[i] / BoundsSize[i] for i in range(3)])
+    RelativePosition = Vector([min(OriginPosition[i] / max(BoundsSize[i], 0.01), 1.0) for i in range(3)])
 
     return RelativePosition
 
