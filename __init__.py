@@ -5,7 +5,6 @@ bl_info = {
     "blender" : (4,3,2),
     "location" : "View3D -> Sidebar",
     "description" : "Export Vertex Animation Textures (VATs)",
-    "warning" : "Still in development",
     "doc_url" : ""
 }
 
