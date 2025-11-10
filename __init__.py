@@ -8,7 +8,10 @@ bl_info = {
     "doc_url" : ""
 }
 
-import UserInterface, Operators
+from . import (
+    UserInterface, 
+    Operators
+)
 from importlib import reload
 
 modules = [UserInterface, Operators]
