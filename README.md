@@ -7,7 +7,7 @@ In Blender, go to *edit > Preferences > Add-ons > Install from disk*
 The plugin should now be good to go.
 
 # Downloading the Unreal Engine plugin
-Download the Plugin folder from [its GitHub](https://github.com/Sebvd/UnrealVATTools). Create a new folder in your Unreal project folder called "Plugins", and paste the folder there.
+Download the Plugin folder from [its GitHub](https://github.com/Sebvd/UnrealVATTools) and extract it. Create a new folder in your Unreal project folder called "Plugins", and paste the folder there.
 
 # Exporting VATs
 ## Creating the files with the Blender plugin
